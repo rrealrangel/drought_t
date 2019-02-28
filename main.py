@@ -104,5 +104,7 @@ def compute_npsdi(data, time_scale=30):
 def main():
     prec = read_input(config['inputs']['prec_file'])
     disc = read_input(config['inputs']['disc_file'])
+    disc[prec.isnull().values] = np.nan
+    prec[disc.isnull().values] = np.nan
     spi = compute_npsdi(data=prec)
     sri = compute_npsdi(data=disc)
