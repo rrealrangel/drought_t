@@ -1,6 +1,6 @@
 [inputs]
-    prec_file = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/prec_ts.csv'
-    disc_file = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/disc_ts.csv'
+    prec_file = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/prec_ts_v2.csv'
+    disc_file = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/disc_ts_v2.csv'
 
 [outputs]
     output_dir= '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/drgt_assessment/'
