@@ -24,33 +24,25 @@ REFERENCES
         Papers 23, (23), 25–25. https://doi.org/10.1016/0022-
         1694(69)90110-3
 """
-
-import lib.drought_indices as indices
+import lib.data_manager as dmgr
+from lib.threshold_level_method import DroughtIndicator
 import numpy as np
-import pandas as pd
-import toml
 
-with open('config.toml', 'rb') as fin:
-    config = toml.load(fin)
-
-
-def read_input(input_file):
-    """Retrieve a time series from a .csv file.
-
-    PARAMETERS
-        input_file: string
-            The ful path of the input .csv file."""
-    return(pd.read_csv(
-            filepath_or_buffer=input_file,
-            index_col='time',
-            parse_dates=True))
-
-
-prec = read_input(config['inputs']['prec_file'])
-disc = read_input(config['inputs']['disc_file'])
+config = dmgr.Configurations('config.toml')
+prec = dmgr.read_input(config.gral_prec_file)
+disc = dmgr.read_input(config.gral_disc_file)
 disc[prec.isnull().values] = np.nan
 prec[disc.isnull().values] = np.nan
-prec_sdi = indices.npsdi(data=prec.rolling(window=1).sum())
-disc_sdi = indices.npsdi(data=disc.rolling(window=1).sum())
-prec_anm = indices.anomaly(data=prec.rolling(window=1).sum(), method='median')
-disc_anm = indices.anomaly(data=disc.rolling(window=1).sum(), method='median')
+
+if config.pooling_method == 'ma':
+    prec = dmgr.scale_data(input_data=prec, scale=config.agg_scale)
+    disc = dmgr.scale_data(input_data=disc, scale=config.agg_scale)
+
+prec = DroughtIndicator(
+        indicator=prec,
+        pooling_method=config.pooling_method,
+        threshold=config.threshold)
+disc = DroughtIndicator(
+        indicator=disc,
+        pooling_method=config.pooling_method,
+        threshold=config.threshold)
