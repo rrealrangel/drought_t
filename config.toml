@@ -1,7 +1,7 @@
 # General
-gral_prec_file = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/prec_ts_v2.csv'
-gral_disc_file = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/disc_ts_v2.csv'
-gral_output_dir = '/home/rrealrangel/MEGA/proyectos/2019/2019-inv-01_cathments-classification/main/analisys/per_catchment/sg30057/drgt_assessment/'
+gral_prec_file = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/30057_pichucalco/prec_ts_v2.csv'
+gral_disc_file = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/30057_pichucalco/disc_ts_v2.csv'
+gral_output_dir = '/home/realrangel/MEGA/projects/2019/2019-inv-01_cathments-classification/main/analisys/catchments/30057_pichucalco/drougt_assessment/'
 gral_show_positives = true
 
 # Drought definition

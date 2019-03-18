@@ -24,9 +24,11 @@ REFERENCES
         Papers 23, (23), 25–25. https://doi.org/10.1016/0022-
         1694(69)90110-3
 """
+
+import numpy as np
+
 import lib.data_manager as dmgr
 from lib.threshold_level_method import DroughtIndicator
-import numpy as np
 
 config = dmgr.Configurations('config.toml')
 prec = dmgr.read_input(config.gral_prec_file)
