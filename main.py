@@ -28,23 +28,64 @@ REFERENCES
 import numpy as np
 
 import lib.data_manager as dmgr
-from lib.threshold_level_method import DroughtIndicator
+import lib.threshold_level_method as tlm
 
 config = dmgr.Configurations('config.toml')
-prec = dmgr.read_input(config.gral_prec_file)
-disc = dmgr.read_input(config.gral_disc_file)
-disc[prec.isnull().values] = np.nan
-prec[disc.isnull().values] = np.nan
 
-if config.pooling_method == 'ma':
-    prec = dmgr.scale_data(input_data=prec, scale=config.agg_scale)
-    disc = dmgr.scale_data(input_data=disc, scale=config.agg_scale)
+# Retrieve variables data.
+# TODO: Make a unique function for any variable.
+prec_raw = dmgr.grid_time_series(
+    input_dir=config.gral['var1_dir'],
+    basin_vmap=config.gral['basin_vmap'],
+    resolution=config.grid['res'],
+    nodata=config.grid['nodata'],
+    missthresh=config.grid['missthresh'],
+    variable='prec',
+    flowstate='flow'
+    )
+sflo_raw = dmgr.sflo_time_series(
+    input_dir=config.gral['var2_dir'],
+    basin_vmap=config.gral['basin_vmap'],
+    resolution=config.grid['res'],
+    nodata=config.grid['nodata']
+    )
+tmax_raw = dmgr.grid_time_series(
+    input_dir=config.gral['var3_dir'],
+    basin_vmap=config.gral['basin_vmap'],
+    resolution=config.grid['res'],
+    nodata=config.grid['nodata'],
+    missthresh=config.grid['missthresh'],
+    variable='tmax',
+    flowstate='state'
+    )
 
-prec = DroughtIndicator(
-        indicator=prec,
-        pooling_method=config.pooling_method,
-        threshold=config.threshold)
-disc = DroughtIndicator(
-        indicator=disc,
-        pooling_method=config.pooling_method,
-        threshold=config.threshold)
+# Trim datasets to set a common time period.
+first = max([sflo_raw.index.min(), prec_raw.index.min(), tmax_raw.index.min()])
+last = min([sflo_raw.index.max(), prec_raw.index.max(), tmax_raw.index.max()])
+prec_raw = prec_raw[(prec_raw.index >= first) & (prec_raw.index <= last)]
+sflo_raw = sflo_raw[(sflo_raw.index >= first) & (sflo_raw.index <= last)]
+tmax_raw = tmax_raw[(tmax_raw.index >= first) & (tmax_raw.index <= last)]
+sflo_raw[prec_raw.isnull().values] = np.nan
+prec_raw[sflo_raw.isnull().values] = np.nan
+
+# TODO: Put the following 'if' into the DroughtIndicator class.   #nextversion
+if config.drought['pooling_method'] == 'ma':
+    prec = dmgr.scale_data(
+        input_data=prec_raw,
+        scale=config.drought['agg_scale']
+        )
+    sflo = dmgr.scale_data(
+        input_data=sflo_raw,
+        scale=config.drought['agg_scale']
+        )
+
+prec = tlm.DroughtIndicator(
+    indicator=prec,
+    pooling_method=config.drought['pooling_method'],
+    threshold=config.drought['threshold']
+    )
+sflo = tlm.DroughtIndicator(
+    indicator=sflo,
+    pooling_method=config.drought['pooling_method'],
+    threshold=config.drought['threshold']
+    )

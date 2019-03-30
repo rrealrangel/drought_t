@@ -84,27 +84,29 @@ class DroughtIndicator:
     def reference_level(self):
         # Compute the reference level.
         dates = pd.date_range(
-                start='1981-01-01',
-                end='1981-12-31',
-                freq=self.indicator.index.freqstr)
+            start='1981-01-01',
+            end='1981-12-31',
+            freq=self.indicator.index.freqstr
+            )
         reflev = self.indicator.copy()
 
         for date in dates:
             indicator_parcial = self.indicator[
-                    (self.indicator.index.month == date.month) &
-                    (self.indicator.index.day == date.day)]
+                (self.indicator.index.month == date.month) &
+                (self.indicator.index.day == date.day)
+                ]
 
             if self.threshold == 'median':
                 reflev[
                     (reflev.index.month == date.month) &
-                    (reflev.index.day == date.day)] = float(
-                        indicator_parcial.quantile(q=0.5))
+                    (reflev.index.day == date.day)
+                    ] = float(indicator_parcial.quantile(q=0.5))
 
             elif self.threshold == 'mean':
                 reflev[
                     (reflev.index.month == date.month) &
-                    (reflev.index.day == date.day)] = float(
-                        indicator_parcial.mean())
+                    (reflev.index.day == date.day)
+                    ] = float(indicator_parcial.mean())
 
         return(reflev)
 
@@ -128,15 +130,19 @@ class DroughtIndicator:
         print("This action might take several seconds."
               " Please wait while processing.")
         grouper = group_runs(
-                deviations=self.deviation(),
-                pooling_method=self.pooling_method)
+            deviations=self.deviation(),
+            pooling_method=self.pooling_method
+            )
         runs = {name: grouper.get_group(name=name) for name in grouper.indices}
 
         if show_positives:
             return(runs)
         else:
-            return({key: runs[key] for key in runs.keys() if
-                    runs[key].values.sum() < 0})
+            return(
+                {key: runs[key]
+                    for key in runs.keys()
+                    if runs[key].values.sum() < 0}
+                )
 
     def get_runs_sum(self, show_positives=True):
         """Computes the sum of all deviations between successive
@@ -152,8 +158,9 @@ class DroughtIndicator:
             /0022-1694(69)90110-3
         """
         grouper = group_runs(
-                deviations=self.deviation(),
-                pooling_method=self.pooling_method)
+            deviations=self.deviation(),
+            pooling_method=self.pooling_method
+            )
         runs_sums = grouper.sum()
         main_key = runs_sums.keys().values[0]
 
@@ -176,8 +183,9 @@ class DroughtIndicator:
             /0022-1694(69)90110-3
         """
         grouper = group_runs(
-                deviations=self.deviation(),
-                pooling_method=self.pooling_method)
+            deviations=self.deviation(),
+            pooling_method=self.pooling_method
+            )
         runs_sums = grouper.sum()
         runs_lengths = grouper.count()
         main_key = runs_lengths.keys().values[0]
@@ -190,3 +198,11 @@ class DroughtIndicator:
 
     def get_sum_length_ratio(self):
         return(self.get_runs_sum() / self.get_runs_length())
+
+    def cumsum(self):
+        return(
+            group_runs(
+                deviations=self.deviation(),
+                pooling_method=self.pooling_method
+                ).cumsum()
+            )

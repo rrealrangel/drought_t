@@ -6,6 +6,9 @@ Required Python packages:
 * numpy
 * pandas
 * toml
+* dask
+* xarray
+* toolz
 
 ## Author
 Roberto A. Real-Rangel at the Institute of Engineering of the National Autonomous University of Mexico (II-UNAM).

@@ -1,11 +1,24 @@
 # General
-gral_prec_file = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/30057_pichucalco/prec_ts_v2.csv'
-gral_disc_file = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/30057_pichucalco/disc_ts_v2.csv'
-gral_output_dir = '/home/realrangel/MEGA/projects/2019/2019-inv-01_cathments-classification/main/analisys/catchments/30057_pichucalco/drougt_assessment/'
-gral_show_positives = true
+[gral]
+    var1_dir = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/15014_higuera_blanca_ii/precipitation/'
+    var2_dir = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/15014_higuera_blanca_ii/streamflow/'
+    var3_dir = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/15014_higuera_blanca_ii/temperature_max/'
+    output_dir = '/home/realrangel/MEGA/projects/2019/2019-inv-01_cathments-classification/main/analisys/catchments/30057_pichucalco/drougt_assessment/'
+    basin_vmap = '/home/realrangel/MEGA/projects/2019/2019-01_cathments-classification/main/analisys/catchments/15014_higuera_blanca_ii/basin/basin.shp'
 
 # Drought definition
-pooling_method = 'ma'
-agg_scale = 15   # Used only if pooling_method == 'ma'
-threshold = 'median'
+[drought]
+    pooling_method = 'ma'
+    agg_scale = 30   # Used only if pooling_method == 'ma'
+    threshold = 'median' # TODO: replace "threshold" by "reference".
+    show_positives = false
 
+# Region
+[grid]
+    xmin = 3433000
+    xmax = 3454200
+    ymin = 612300
+    ymax = 649700
+    res = 5000
+    nodata = -32768
+    missthresh = 0.95   # TODO: Move this configuration to a more suitable dictionary of settings.
