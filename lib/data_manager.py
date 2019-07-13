@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """DROUGHT ASSESSMENT
 DESCRIPTION
@@ -15,7 +15,7 @@ from pathlib2 import Path
 import gdal
 import ogr
 import pandas as pd
-import toml
+import toml as _toml
 import xarray as xr
 
 
@@ -24,9 +24,7 @@ class Configurations():
     """
     def __init__(self, config_file):
         self.config_file = config_file
-
-        with open(self.config_file, 'rb') as file_content:
-            config = toml.load(file_content)
+        config = _toml.load(config_file)
 
         for key, value in config.items():
             setattr(self, key, value)
@@ -53,22 +51,7 @@ def list_files(parent_dir, ext):
     for patt in patterns:
         files_list.extend(parent_dir.glob(pattern=patt))
 
-    return(files_list)
-
-
-def read_input(input_file):
-    """Retrieve a time series from a .csv file.
-
-    Parameters:
-        input_file : string
-            The ful path of the input .csv file."""
-    return(
-        pd.read_csv(
-            filepath_or_buffer=input_file,
-            index_col='time',
-            parse_dates=True
-            )
-        )
+    return([str(i) for i in files_list])
 
 
 def vector2array(basin_vmap, resolution, nodata):
@@ -115,9 +98,10 @@ def vector2array(basin_vmap, resolution, nodata):
     return(output_band.ReadAsArray().astype(int))
 
 
-def grid_time_series(
+def clim_time_series(
         input_dir, basin_vmap, resolution, nodata, missthresh, variable,
-        flowstate):
+        flowstate
+        ):
     """Reads a datacube (t, x, y) and generates a time series.
 
     Parameters:
@@ -131,42 +115,44 @@ def grid_time_series(
 
     Outputs:
     """
-    paths = list_files(parent_dir=input_dir, ext=['.nc', '.nc4'])
+    paths = list_files(
+        parent_dir=input_dir,
+        ext=['.nc', '.nc4']
+        )
+
     data = xr.open_mfdataset(paths)
-    data = data.rename(name_dict={data.keys()[0]: variable})
+    data = data.rename(name_dict={'__xarray_dataarray_variable__': variable})
     mask = vector2array(basin_vmap, resolution, nodata)
     inregion_cells = (mask == 1).sum()
     min_cells = inregion_cells * missthresh
-    basin_area = inregion_cells * resolution**2
+    basin_area = inregion_cells * (resolution**2 / 1e6)
 
     if flowstate == 'flow':
         accum = (data[variable] * resolution**2).sum(['east', 'north'])
-        data_aggregated = accum / basin_area
+        data_aggregated = accum / (basin_area * 1e6)
 
     elif flowstate == 'state':
         data_aggregated = data[variable].mean(['east', 'north'])
 
     cells_per_date = data[variable].notnull().sum(['east', 'north'])
-    output_dataframe = xr.where(
+
+    time_series = xr.where(
         cells_per_date < min_cells, nan, data_aggregated
-        ).to_dataframe()
-    return(output_dataframe.reindex(sorted(output_dataframe.index)))
+        ).to_series()
+
+    return(time_series.reindex(sorted(time_series.index)))
 
 
-def sflo_time_series(input_dir, basin_vmap, resolution, nodata):
-    # TODO: Generalize this function.
-    paths = list_files(parent_dir=input_dir, ext=['.nc', '.nc4'])
-    data = xr.open_mfdataset(paths)
-    dropvars = [i for i in data.keys() if i != data.keys()[0]]
-    data = data.rename(name_dict={data.keys()[0]: 'Streamflow'})
-    data = data.drop(labels=dropvars)
+def sflo_time_series(input_file, basin_vmap, resolution, nodata):
+    data = xr.open_dataset(input_file)
+    data = data['disc_filled'].rename('observed')
     data = data * (24 * 60 * 60) * 1000   # Convert m3/s to mm/d
     mask = vector2array(basin_vmap, resolution, nodata)
     inregion_cells = (mask == 1).sum()
-    basin_area = inregion_cells * resolution**2
-    output_dataframe = (data[data.keys()[0]] / basin_area).to_dataframe()
-    output_dataframe.index = output_dataframe.index + pd.Timedelta(8, 'h')
-    return(output_dataframe.reindex(sorted(output_dataframe.index)))
+    basin_area = inregion_cells * (resolution**2 / 1e6)  # Prevent overflow.
+    time_series = (data / (basin_area * 1e6)).to_series()
+    time_series.index = time_series.index + pd.Timedelta(8, 'h')
+    return(time_series.reindex(sorted(time_series.index)))
 
 
 def scale_data(input_data, scale=10):
@@ -192,3 +178,31 @@ def scale_data(input_data, scale=10):
     """
     scaler = input_data.rolling(window=scale, center=True)
     return(scaler.mean())
+
+
+def esaccism_daily2annual_storing(
+        input_dir, output_dir, xmin, ymin, xmax, ymax
+        ):
+    daily_paths = list_files(
+        parent_dir=input_dir,
+        ext=['.nc', '.nc4']
+        )
+
+    for year in range(1978, 2019):
+        year_paths = [i for i in daily_paths if ('-' + str(year)) in i]
+
+        data = xr.open_mfdataset(
+            year_paths,
+            autoclose=True
+            )
+
+        clip_study_area = data.where(
+            (data.lat >= ymin) &
+            (data.lat <= ymax) &
+            (data.lon >= xmin) &
+            (data.lon <= xmax),
+            drop=True
+            )
+
+        output_name = output_dir + '/' + str(year) + '.nc4'
+        clip_study_area.to_netcdf(path=output_name)
