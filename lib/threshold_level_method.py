@@ -31,10 +31,12 @@ REFERENCES
 
 import sys as _sys
 
-from PyEMD import EMD as _EMD
+#from PyEMD import EMD as _EMD
 from scipy import signal as _signal
 import numpy as _np
 import pandas as _pd
+
+import lib.data_manager as dmgr
 
 
 def _sign_wo_zero(value):
@@ -90,14 +92,13 @@ def reference_value(data, detrend='linear', ref_level=0.5):
                 reflev_part = trend_diff + reference
                 reflev_part[reflev_part < 0] = 0  # Impossible neg values.
 
-        elif detrend == 'emd':
-            data_subts_detrended = data_subts.copy()
-            emd = _EMD()
-
-            data_subts_detrended[data_subts_detrended.notnull()] = emd(
-                data_subts[data_subts.notnull()].values
-                )
-
+#        elif detrend == 'emd':
+#            data_subts_detrended = data_subts.copy()
+#            emd = _EMD()
+#
+#            data_subts_detrended[data_subts_detrended.notnull()] = emd(
+#                data_subts[data_subts.notnull()].values
+#                )
 
         elif detrend is False:
             if ref_level == 'mean':
@@ -220,11 +221,12 @@ def get_runs(
 
             runs_pooled = {}
             counter = 1
+            counter2 = 0
 
-            for num_ma, run_ma in runs_ma.items():
+            for num_ma, run_ma in runs_ma.iteritems():
                 candidates_to_pool = []
 
-                for num, run in runs.items():
+                for num, run in runs.iteritems():
                     if run.index[0] <= run_ma.index[-1]:
                         for date in run_ma.index:
                             if date in run.index:
@@ -257,6 +259,14 @@ def get_runs(
 
                         counter += 1
 
+                counter2 += 1
+                dmgr.progress_message(
+                    current=(counter2),
+                    total=len(runs_ma),
+                    message="- Pooling runs",
+                    units='runs'
+                    )
+
     elif pooling_method == 'sp':
         # Sequent peak algorithm method.
         pass
@@ -274,7 +284,7 @@ def get_runs(
         onsets_output = _pd.Series(
             data={
                 num: run.index[0]
-                for num, run in runs_pooled.items()
+                for num, run in runs_pooled.iteritems()
                 },
             name='onset_date'
             )
@@ -282,7 +292,7 @@ def get_runs(
         ends_output = _pd.Series(
             data={
                 num: run.index[-1]
-                for num, run in runs_pooled.items()
+                for num, run in runs_pooled.iteritems()
                 },
             name='end_date'
             )
@@ -291,7 +301,7 @@ def get_runs(
         runs_output = _pd.Series(
             data={
                 num: run
-                for num, run in runs_pooled.items()
+                for num, run in runs_pooled.iteritems()
                 if run.sum() < 0
                 },
             name='anomaly'
@@ -300,7 +310,7 @@ def get_runs(
         onsets_output = _pd.Series(
             data={
                 num: run.index[0]
-                for num, run in runs_pooled.items()
+                for num, run in runs_pooled.iteritems()
                 if run.sum() < 0
                 },
             name='onset_date'
@@ -309,7 +319,7 @@ def get_runs(
         ends_output = _pd.Series(
             data={
                 num: run.index[-1]
-                for num, run in runs_pooled.items()
+                for num, run in runs_pooled.iteritems()
                 if run.sum() < 0
                 },
             name='end_date'

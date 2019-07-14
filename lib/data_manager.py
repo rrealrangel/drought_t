@@ -10,6 +10,8 @@ AUTHOR
 LICENSE
     GNU General Public License
 """
+import sys
+
 from numpy import nan
 from pathlib2 import Path
 import gdal
@@ -206,3 +208,37 @@ def esaccism_daily2annual_storing(
 
         output_name = output_dir + '/' + str(year) + '.nc4'
         clip_study_area.to_netcdf(path=output_name)
+
+
+def progress_message(current, total, message="- Processing", units=None):
+    """Issue a messages of the progress of the process.
+
+    Generates a progress bar in terminal. It works within a for loop,
+    computing the progress percentage based on the current item
+    number and the total length of the sequence of item to iterate.
+
+    Parameters:
+        current : integer
+            The last item number computed within the for loop. This
+            could be obtained using enumerate() in when calling the for
+            loop.
+        total : integer
+            The total length of the sequence for which the for loop is
+            performing the iterations.
+        message : string (optional; default = "- Processing")
+    """
+    if units is not None:
+        progress = float(current)/total
+        sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
+                message, progress * 100, units))
+
+    else:
+        progress = float(current)/total
+        sys.stdout.write("\r    {} ({:.1f} % processed)".format(
+                message, progress * 100))
+
+    if progress < 1:
+        sys.stdout.flush()
+
+    else:
+        sys.stdout.write('\n')

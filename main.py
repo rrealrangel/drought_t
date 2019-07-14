@@ -1,4 +1,3 @@
-#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """DROUGHT ASSESSMENT
 DESCRIPTION
@@ -24,68 +23,201 @@ REFERENCES
         Papers 23, (23), 25–25. https://doi.org/10.1016/0022-
         1694(69)90110-3
 """
-
-import numpy as np
+import os
 
 import lib.data_manager as dmgr
+import lib.plot_time_series as plt
 import lib.threshold_level_method as tlm
 
-config = dmgr.Configurations('config.toml')
+config = dmgr.Configurations(
+    '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis'
+    '/02_drought_analysis/15014/config.toml'
+    )
 
-# Retrieve variables data.
 # TODO: Make a unique function for any variable.
-prec_raw = dmgr.grid_time_series(
-    input_dir=config.gral['var1_dir'],
-    basin_vmap=config.gral['basin_vmap'],
-    resolution=config.grid['res'],
-    nodata=config.grid['nodata'],
-    missthresh=config.grid['missthresh'],
-    variable='prec',
-    flowstate='flow'
-    )
-sflo_raw = dmgr.sflo_time_series(
-    input_dir=config.gral['var2_dir'],
-    basin_vmap=config.gral['basin_vmap'],
-    resolution=config.grid['res'],
-    nodata=config.grid['nodata']
-    )
-tmax_raw = dmgr.grid_time_series(
-    input_dir=config.gral['var3_dir'],
-    basin_vmap=config.gral['basin_vmap'],
-    resolution=config.grid['res'],
-    nodata=config.grid['nodata'],
-    missthresh=config.grid['missthresh'],
-    variable='tmax',
-    flowstate='state'
-    )
+# Retrieve variables precipitation data.
+if config.vars['prec']['input_dir'] is not False:
+    prec_raw = dmgr.clim_time_series(
+        input_dir=config.vars['prec']['input_dir'],
+        basin_vmap=config.vars['basin_vmap'],
+        resolution=config.grid['res'],
+        nodata=config.grid['nodata'],
+        missthresh=config.grid['missthresh'],
+        variable='observed',
+        flowstate='flow'
+        )
 
-# Trim datasets to set a common time period.
-first = max([sflo_raw.index.min(), prec_raw.index.min(), tmax_raw.index.min()])
-last = min([sflo_raw.index.max(), prec_raw.index.max(), tmax_raw.index.max()])
-prec_raw = prec_raw[(prec_raw.index >= first) & (prec_raw.index <= last)]
-sflo_raw = sflo_raw[(sflo_raw.index >= first) & (sflo_raw.index <= last)]
-tmax_raw = tmax_raw[(tmax_raw.index >= first) & (tmax_raw.index <= last)]
-sflo_raw[prec_raw.isnull().values] = np.nan
-prec_raw[sflo_raw.isnull().values] = np.nan
+else:
+    prec_raw = None
 
-# TODO: Put the following 'if' into the DroughtIndicator class.   #nextversion
-if config.drought['pooling_method'] == 'ma':
+# Retrieve stream flow data.
+if config.vars['sflo']['input_file'] is not False:
+    sflo_raw = dmgr.sflo_time_series(
+        input_file=config.vars['sflo']['input_file'],
+        basin_vmap=config.vars['basin_vmap'],
+        resolution=config.grid['res'],
+        nodata=config.grid['nodata']
+        )
+
+else:
+    sflo_raw = None
+
+# Retrieve soil moisture data.
+if config.vars['smoi']['input_dir'] is not False:
+    smoi_raw = dmgr.smoi_time_series(
+        input_dir=config.vars['smoi']['input_dir'],
+        basin_vmap=config.vars['basin_vmap'],
+        resolution=config.grid['res'],
+        nodata=config.grid['nodata']
+        )
+
+else:
+    smoi_raw = None
+
+# Retrieve temperature data.
+if config.vars['tmea']['input_dir'] is not False:
+    tmea_raw = dmgr.clim_time_series(
+        input_dir=config.vars['tmea']['input_dir'],
+        basin_vmap=config.vars['basin_vmap'],
+        resolution=config.grid['res'],
+        nodata=config.grid['nodata'],
+        missthresh=config.grid['missthresh'],
+        variable='observed',
+        flowstate='state'
+        )
+
+else:
+    tmea_raw = None
+
+# Aggregate data.
+if prec_raw is not None:
     prec = dmgr.scale_data(
         input_data=prec_raw,
-        scale=config.drought['agg_scale']
-        )
-    sflo = dmgr.scale_data(
-        input_data=sflo_raw,
-        scale=config.drought['agg_scale']
+        scale=config.vars['prec']['agg_scale']
         )
 
-prec = tlm.DroughtIndicator(
-    indicator=prec,
+if sflo_raw is not None:
+    sflo = dmgr.scale_data(
+        input_data=sflo_raw,
+        scale=config.vars['sflo']['agg_scale']
+        )
+
+if smoi_raw is not None:
+    smoi = dmgr.scale_data(
+        input_data=smoi_raw,
+        scale=config.vars['smoi']['agg_scale']
+        )
+
+if tmea_raw is not None:
+    tmea = dmgr.scale_data(
+        input_data=tmea_raw,
+        scale=config.vars['tmea']['agg_scale']
+        )
+
+# Precipitation deficit
+precdef_run, precdef_onset, precdef_end = tlm.get_runs(
+    data=prec,
     pooling_method=config.drought['pooling_method'],
-    threshold=config.drought['threshold']
+    detrend=config.vars['detrend'],
+    ref_level=config.drought['ref_level'],
+    show_positives=config.drought['show_positives'],
+    window=config.drought['ma_window']
     )
-sflo = tlm.DroughtIndicator(
-    indicator=sflo,
+
+precdef_magnitude = tlm.runs_sum(runs=precdef_run)
+
+
+precdef_run_large = precdef_run[
+    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+    ]
+
+precdef_peak = tlm.run_peak(
+    runs=precdef_run
+    )
+
+precdef_peak_large = tlm.run_peak(
+    runs=precdef_run_large
+    )
+
+precdef_onset_large = precdef_onset[
+    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+    ]
+
+precdef_end_large = precdef_end[
+    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+    ]
+
+precdef_magnitude_large = precdef_magnitude[
+    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+    ]
+
+# Stream flow deficit
+sflodef_run, sflodef_onset, sflodef_end = tlm.get_runs(
+    data=sflo,
     pooling_method=config.drought['pooling_method'],
-    threshold=config.drought['threshold']
+    detrend=config.vars['detrend'],
+    ref_level=config.drought['ref_level'],
+    show_positives=config.drought['show_positives'],
+    window=config.drought['ma_window']
     )
+
+sflodef_magnitude = tlm.runs_sum(runs=sflodef_run)
+
+sflodef_run_large = sflodef_run[
+    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+    ]
+
+sflodef_peak = tlm.run_peak(
+    runs=sflodef_run
+    )
+
+sflodef_peak_large = tlm.run_peak(
+    runs=sflodef_run_large
+    )
+
+sflodef_onset_large = sflodef_onset[
+    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+    ]
+
+sflodef_end_large = sflodef_end[
+    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+    ]
+
+sflodef_magnitude_large = sflodef_magnitude[
+    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+    ]
+
+if config.plot['plot_time_series']:
+    if not os.path.isdir(config.plot['output_dir']):
+        os.mkdir(config.plot['output_dir'])
+
+    series1_ref = tlm.reference_value(data=prec)
+    series2_ref = tlm.reference_value(data=sflo)
+
+    first_year = max([
+        i.index.min()
+        for i in [prec_raw, sflo_raw, tmea_raw]
+        if i is not None
+        ]).year
+
+    last_year = min([
+        i.index.max()
+        for i in [prec_raw, sflo_raw, tmea_raw]
+        if i is not None
+        ]).year + 1
+
+    for date in range(first_year, last_year):
+        output_file = (
+            config.plot['output_dir'] + '/drought_' + str(date) + '-' +
+            str(date + 1)[-2:] + '.png'
+            )
+
+        plt.plot_ts(
+            series1=prec,
+            series2=sflo,
+            start_date=(str(date) + '-' + config.plot['plot_start']),
+            end_date=(str(date + 1) + '-' + config.plot['plot_end']),
+            output_file=output_file,
+            series1_ref=series1_ref,
+            series2_ref=series2_ref
+            )
