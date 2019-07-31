@@ -31,7 +31,7 @@ REFERENCES
 
 import sys as _sys
 
-#from PyEMD import EMD as _EMD
+from PyEMD import EMD as _EMD
 from scipy import signal as _signal
 import numpy as _np
 import pandas as _pd
@@ -92,13 +92,13 @@ def reference_value(data, detrend='linear', ref_level=0.5):
                 reflev_part = trend_diff + reference
                 reflev_part[reflev_part < 0] = 0  # Impossible neg values.
 
-#        elif detrend == 'emd':
-#            data_subts_detrended = data_subts.copy()
-#            emd = _EMD()
-#
-#            data_subts_detrended[data_subts_detrended.notnull()] = emd(
-#                data_subts[data_subts.notnull()].values
-#                )
+        elif detrend == 'emd':
+            data_subts_detrended = data_subts.copy()
+            emd = _EMD()
+
+            data_subts_detrended[data_subts_detrended.notnull()] = emd(
+                data_subts[data_subts.notnull()].values
+                )
 
         elif detrend is False:
             if ref_level == 'mean':

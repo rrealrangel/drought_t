@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """DROUGHT ASSESSMENT
 DESCRIPTION
@@ -10,15 +10,16 @@ AUTHOR
 LICENSE
     GNU General Public License
 """
-import sys
+import math
+import sys as _sys
 
-from numpy import nan
-from pathlib2 import Path
-import gdal
-import ogr
-import pandas as pd
+from numpy import nan as _nan
+from pathlib2 import Path as _Path
+import gdal as _gdal
+import ogr as _ogr
+import pandas as _pd
 import toml as _toml
-import xarray as xr
+import xarray as _xr
 
 
 class Configurations():
@@ -41,7 +42,7 @@ def list_files(parent_dir, ext):
         ext: string or list of strings
             Extension(s) of the files to be listed.
     """
-    parent_dir = Path(parent_dir)
+    parent_dir = _Path(parent_dir)
     files_list = []
 
     if isinstance(ext, str):
@@ -56,6 +57,47 @@ def list_files(parent_dir, ext):
     return([str(i) for i in files_list])
 
 
+def vmap_area(input_vmap):
+    source_ds = _ogr.Open(input_vmap)
+    source_layer = source_ds.GetLayer(0)
+    feature = source_layer[0]
+    geom = feature.GetGeometryRef()
+    return(geom.GetArea())
+
+
+def degdist_2_meters(lat1, lat2, lon1, lon2):
+    """
+    https://stackoverflow.com/a/11172685/6331477
+    """
+    R = 6378137  # Radius of earth in meters
+    dLat = lat2 * math.pi / 180 - lat1 * math.pi / 180
+    dLon = lon2 * math.pi / 180 - lon1 * math.pi / 180
+    a = ((math.sin(dLat / 2) * math.sin(dLat / 2)) +
+         (math.cos(lat1 * math.pi / 180) *
+          math.cos(lat2 * math.pi / 180) *
+          math.sin(dLon / 2) *
+          math.sin(dLon / 2)))
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    d = R * c
+    return(d)
+
+
+def degbox_2_area(lat, lon, res):
+    w = degdist_2_meters(
+        lat1=(lat),
+        lat2=(lat),
+        lon1=(lon - res / 2),
+        lon2=(lon + res / 2)
+        )
+    h = degdist_2_meters(
+        lat1=(lat - res / 2),
+        lat2=(lat + res / 2),
+        lon1=(lon),
+        lon2=(lon)
+        )
+    return(w * h)
+
+
 def vector2array(basin_vmap, resolution, nodata):
     """
     Parameters:
@@ -67,7 +109,7 @@ def vector2array(basin_vmap, resolution, nodata):
         https://bit.ly/2HxeOng
     """
     # Open the data source and read in the extent
-    source_ds = ogr.Open(basin_vmap)
+    source_ds = _ogr.Open(basin_vmap)
     source_layer = source_ds.GetLayer(0)
     xmin, xmax, ymin, ymax = source_layer.GetExtent()
 
@@ -86,22 +128,22 @@ def vector2array(basin_vmap, resolution, nodata):
     # Create the destination data source
     cols = int((xmax - xmin) / resolution)
     rows = int((ymax - ymin) / resolution)
-    output_source = gdal.GetDriverByName('MEM').Create(
-        '', cols, rows, gdal.GDT_Byte
+    output_source = _gdal.GetDriverByName('MEM').Create(
+        '', cols, rows, _gdal.GDT_Byte
         )
     output_source.SetGeoTransform((xmin, resolution, 0, ymax, 0, -resolution))
     output_band = output_source.GetRasterBand(1)
     output_band.SetNoDataValue(nodata)
 
     # Rasterize
-    gdal.RasterizeLayer(output_source, [1], source_layer, burn_values=[1])
+    _gdal.RasterizeLayer(output_source, [1], source_layer, burn_values=[1])
 
     # Read as array
     return(output_band.ReadAsArray().astype(int))
 
 
-def clim_time_series(
-        input_dir, basin_vmap, resolution, nodata, missthresh, variable,
+def open_clim_ts(
+        input_dir, basin_vmap, resolution, nodata, missthresh, output_varname,
         flowstate
         ):
     """Reads a datacube (t, x, y) and generates a time series.
@@ -112,102 +154,90 @@ def clim_time_series(
         resolution : float
         nodata : float
         missthresh : float
-        variable : string
+        output_varname : string
         flowstate : string
 
     Outputs:
     """
-    paths = list_files(
-        parent_dir=input_dir,
-        ext=['.nc', '.nc4']
-        )
-
-    data = xr.open_mfdataset(paths)
-    data = data.rename(name_dict={'__xarray_dataarray_variable__': variable})
+    data = _xr.open_mfdataset(paths=(input_dir + '/*.nc4'))
+    data = data.rename(name_dict={'prec': output_varname})
     mask = vector2array(basin_vmap, resolution, nodata)
     inregion_cells = (mask == 1).sum()
     min_cells = inregion_cells * missthresh
     basin_area = inregion_cells * (resolution**2 / 1e6)
 
     if flowstate == 'flow':
-        accum = (data[variable] * resolution**2).sum(['east', 'north'])
+        accum = (data[output_varname] * resolution**2).sum(['east', 'north'])
         data_aggregated = accum / (basin_area * 1e6)
 
     elif flowstate == 'state':
-        data_aggregated = data[variable].mean(['east', 'north'])
+        data_aggregated = data[output_varname].mean(['east', 'north'])
 
-    cells_per_date = data[variable].notnull().sum(['east', 'north'])
+    cells_per_date = data[output_varname].notnull().sum(['east', 'north'])
 
-    time_series = xr.where(
-        cells_per_date < min_cells, nan, data_aggregated
+    time_series = _xr.where(
+        cells_per_date < min_cells, _nan, data_aggregated
         ).to_series()
 
-    return(time_series.reindex(sorted(time_series.index)))
-
-
-def sflo_time_series(input_file, basin_vmap, resolution, nodata):
-    data = xr.open_dataset(input_file)
-    data = data['disc_filled'].rename('observed')
-    data = data * (24 * 60 * 60) * 1000   # Convert m3/s to mm/d
-    mask = vector2array(basin_vmap, resolution, nodata)
-    inregion_cells = (mask == 1).sum()
-    basin_area = inregion_cells * (resolution**2 / 1e6)  # Prevent overflow.
-    time_series = (data / (basin_area * 1e6)).to_series()
-    time_series.index = time_series.index + pd.Timedelta(8, 'h')
-    return(time_series.reindex(sorted(time_series.index)))
-
-
-def scale_data(input_data, scale=10):
-    """Scale input data following a given method (resample or rolling).
-
-    PARAMETERS
-        input_data: pandas.Series
-            The input time series in a form of a pandas.Series.
-        scale: string or integer (optional)
-            Temporal scale to which transform the input time series. It
-            is formatted as pandas offset strings (to learn more about
-            the offset strings, see https://bit.ly/2C4P9ig). Default is
-            '1D'. Note: if method is 'roll', scale must be a fixed
-            frequency.
-        method: string (optional)
-            Defines the method by which the input time series is
-            scaled. The options are 'resample' and 'roll'. Default is
-            'resample'.
-        function: string (optional)
-            Method for down/re-sampling. Default is 'sum'. Flux
-            variable might use 'sum', while state variables mihgt use
-            'mean'.
-    """
-    scaler = input_data.rolling(window=scale, center=True)
-    return(scaler.mean())
-
-
-def esaccism_daily2annual_storing(
-        input_dir, output_dir, xmin, ymin, xmax, ymax
-        ):
-    daily_paths = list_files(
-        parent_dir=input_dir,
-        ext=['.nc', '.nc4']
+    new_indices = _pd.date_range(
+        start=sorted(time_series.index)[0],
+        end=sorted(time_series.index)[-1],
+        freq='1D'
         )
 
-    for year in range(1978, 2019):
-        year_paths = [i for i in daily_paths if ('-' + str(year)) in i]
+    # TODO: clip data to the basin.
 
-        data = xr.open_mfdataset(
-            year_paths,
-            autoclose=True
-            )
+    return(time_series.reindex(new_indices))
 
-        clip_study_area = data.where(
-            (data.lat >= ymin) &
-            (data.lat <= ymax) &
-            (data.lon >= xmin) &
-            (data.lon <= xmax),
-            drop=True
-            )
 
-        output_name = output_dir + '/' + str(year) + '.nc4'
-        clip_study_area.to_netcdf(path=output_name)
+def open_chirps_ts(input_dir, output_varname, res):
+    data = _xr.open_mfdataset(paths=(input_dir + '/*.nc'))
+    data = data.rename(name_dict={'precip': output_varname})
+    data_accum_per_cell = data.copy().observed
+    data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
+
+    basin_area = 0
+    for lat in data_accum_per_cell.latitude:
+        for lon in data_accum_per_cell.longitude:
+            cell_area = degbox_2_area(
+                lat=lat,
+                lon=lon,
+                res=res
+                )
+            data_accum_per_cell.loc[
+                {'latitude': lat, 'longitude': lon}
+                ].values[:] = (data.observed.loc[
+                    {'latitude': lat, 'longitude': lon}
+                    ] * cell_area)
+            basin_area += cell_area
+
+    basin_precip = (data_accum_per_cell.sum(
+        ['latitude', 'longitude']
+        ) / basin_area).to_dataframe()['observed']
+#    basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
+    return(basin_precip)
+
+
+def open_sflow_ts(input_file, basin_vmap, local_tz):
+    # Open data source.
+    data = _xr.open_dataset(input_file)
+    data = data['disc_filled'].rename('observed').to_series()
+
+    # Add 8 hours to the timestamps (actual measuring time) and
+    # convert them from local to UTC
+    data.index = data.index + _pd.Timedelta(8, 'h')
+    data.index = data.index.tz_localize(local_tz)
+    data.index = data.index.tz_convert('UTC')
+
+    # Convert data units from m3 s-1 to mm day-1 m-2.
+    basin_area = vmap_area(input_vmap=basin_vmap)
+    data = ((data * (24 * 60 * 60) * 1000) / basin_area)
+    new_indices = _pd.date_range(
+        start=data.index[0],
+        end=data.index[-1],
+        freq='1D'
+        )
+    return(data.reindex(new_indices))
 
 
 def progress_message(current, total, message="- Processing", units=None):
@@ -229,16 +259,16 @@ def progress_message(current, total, message="- Processing", units=None):
     """
     if units is not None:
         progress = float(current)/total
-        sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
+        _sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
                 message, progress * 100, units))
 
     else:
         progress = float(current)/total
-        sys.stdout.write("\r    {} ({:.1f} % processed)".format(
+        _sys.stdout.write("\r    {} ({:.1f} % processed)".format(
                 message, progress * 100))
 
     if progress < 1:
-        sys.stdout.flush()
+        _sys.stdout.flush()
 
     else:
-        sys.stdout.write('\n')
+        _sys.stdout.write('\n')
