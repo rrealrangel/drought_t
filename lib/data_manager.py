@@ -33,32 +33,32 @@ class Configurations():
             setattr(self, key, value)
 
 
-def list_files(parent_dir, ext):
+def list_files(input_dir, input_patt):
     """List all files in a directory with a specified extension.
 
     Parameters
-        parent_dir: string
+        input_dir: string
             Full path of the directory of which the files are to be listed.
-        ext: string or list of strings
+        input_patt: string or list of strings
             Extension(s) of the files to be listed.
     """
-    parent_dir = _Path(parent_dir)
+    input_dir = _Path(input_dir)
     files_list = []
 
-    if isinstance(ext, str):
-        patterns = ['**/*' + ext]
+    if isinstance(input_patt, str):
+        patterns = ['**/*' + input_patt]
 
-    elif isinstance(ext, list):
-        patterns = ['**/*' + i for i in ext]
+    elif isinstance(input_patt, list):
+        patterns = ['**/*' + i for i in input_patt]
 
     for patt in patterns:
-        files_list.extend(parent_dir.glob(pattern=patt))
+        files_list.extend(input_dir.glob(pattern=patt))
 
     return([str(i) for i in files_list])
 
 
-def vmap_area(input_vmap):
-    source_ds = _ogr.Open(input_vmap)
+def vmap_area(input_path):
+    source_ds = _ogr.Open(input_path)
     source_layer = source_ds.GetLayer(0)
     feature = source_layer[0]
     geom = feature.GetGeometryRef()
@@ -82,26 +82,26 @@ def degdist_2_meters(lat1, lat2, lon1, lon2):
     return(d)
 
 
-def degbox_2_area(lat, lon, res):
+def degbox_2_area(lat, lon, resolution):
     w = degdist_2_meters(
         lat1=(lat),
         lat2=(lat),
-        lon1=(lon - res / 2),
-        lon2=(lon + res / 2)
+        lon1=(lon - resolution / 2),
+        lon2=(lon + resolution / 2)
         )
     h = degdist_2_meters(
-        lat1=(lat - res / 2),
-        lat2=(lat + res / 2),
+        lat1=(lat - resolution / 2),
+        lat2=(lat + resolution / 2),
         lon1=(lon),
         lon2=(lon)
         )
     return(w * h)
 
 
-def vector2array(basin_vmap, resolution, nodata):
+def vector2array(input_path, resolution, nodata):
     """
     Parameters:
-        basin_vmap : string
+        input_path : string
         resolution : float
         nodata : float
 
@@ -109,7 +109,7 @@ def vector2array(basin_vmap, resolution, nodata):
         https://bit.ly/2HxeOng
     """
     # Open the data source and read in the extent
-    source_ds = _ogr.Open(basin_vmap)
+    source_ds = _ogr.Open(input_path)
     source_layer = source_ds.GetLayer(0)
     xmin, xmax, ymin, ymax = source_layer.GetExtent()
 
@@ -142,83 +142,182 @@ def vector2array(basin_vmap, resolution, nodata):
     return(output_band.ReadAsArray().astype(int))
 
 
-def open_clim_ts(
-        input_dir, basin_vmap, resolution, nodata, missthresh, output_varname,
-        flowstate
-        ):
-    """Reads a datacube (t, x, y) and generates a time series.
+#def open_clim_ts(
+#        input_data_dir, output_var_name, resolution, input_mask_path, nodata,
+#        missthresh, flowstate
+#        ):
+#    """Reads a datacube (t, x, y) and generates a time series.
+#
+#    Parameters:
+#        input_data_dir : string
+#        input_mask_path : string
+#        resolution : float
+#        nodata : float
+#        missthresh : float
+#        output_var_name : string
+#        flowstate : string
+#
+#    Outputs:
+#    """
+#    data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc4'))
+#    data = data.rename(name_dict={'prec': output_var_name})
+#    mask = vector2array(
+#        input_path=input_mask_path,
+#        resolution=resolution,
+#        nodata=nodata
+#        )
+#    inregion_cells = (mask == 1).sum()
+#    min_cells = inregion_cells * missthresh
+#    basin_area = inregion_cells * (resolution**2 / 1e6)
+#
+#    if flowstate == 'flow':
+#        accum = (data[output_var_name] * resolution**2).sum(['east', 'north'])
+#        data_aggregated = accum / (basin_area * 1e6)
+#
+#    elif flowstate == 'state':
+#        data_aggregated = data[output_var_name].mean(['east', 'north'])
+#
+#    cells_per_date = data[output_var_name].notnull().sum(['east', 'north'])
+#
+#    time_series = _xr.where(
+#        cells_per_date < min_cells, _nan, data_aggregated
+#        ).to_series()
+#
+#    new_indices = _pd.date_range(
+#        start=sorted(time_series.index)[0],
+#        end=sorted(time_series.index)[-1],
+#        freq='1D'
+#        )
+#
+#    # TODO: clip data to the basin.
+#
+#    return(time_series.reindex(new_indices))
+
+
+#def open_chirps_ts(input_data_dir, output_var_name, resolution):
+#    data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
+#    data = data.rename(name_dict={'precip': output_var_name})
+#    data_accum_per_cell = data.copy().observed
+#    data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
+#
+#    basin_area = 0
+#    for lat in data_accum_per_cell.latitude:
+#        for lon in data_accum_per_cell.longitude:
+#            cell_area = degbox_2_area(
+#                lat=lat,
+#                lon=lon,
+#                resolution=resolution
+#                )
+#            data_accum_per_cell.loc[
+#                {'latitude': lat, 'longitude': lon}
+#                ].values[:] = (data.observed.loc[
+#                    {'latitude': lat, 'longitude': lon}
+#                    ] * cell_area)
+#            basin_area += cell_area
+#
+#    basin_precip = (data_accum_per_cell.sum(
+#        ['latitude', 'longitude']
+#        ) / basin_area).to_dataframe()['observed']
+##    basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
+#    return(basin_precip)
+
+
+def open_precip(source, input_data_dir, output_var_name, resolution, **kwargs):
+    """Open the precipitation data source.
+
+    This functions joints the functions open_clim_ts() and
+        open_chirps_ts() of erlier versions.
 
     Parameters:
-        input_dir : string
-        basin_vmap : string
+        source : string
+            Options are 'bdcn' and 'chirps'.
+        input_data_dir : string
+            The path of the local directory that contains the input
+            precipitation datasets.
+        output_var_name : string
+            The name assigned to the precipitation variable in the
+            output data array.
         resolution : float
-        nodata : float
-        missthresh : float
-        output_varname : string
-        flowstate : string
+            Spatial resolution of the input data. Future versions will
+            get this value from the input data.
+        kwargs['input_mask_path'] : string
+            Used only if source == 'bdcn'. Path of the file of the
+            vector map (Shapefile format) used to mask the input data.
+        kwargs['nodata'] : int
+            Used only if source == 'bdcn'. Value assigned to empty
+            cells.
+        kwargs['missthresh'] : float
+            Used only if source == 'bdcn'. Minimum ratio of available
+            data to perform the area aggregation.
+        kwargs['flowstate'] : string
+            Used only if source == 'bdcn'. Wether the input data is a
+            flow or a state variable. This parameter will be removed
+            in future versions.
 
-    Outputs:
+    # TODO: Optimize this function.
     """
-    data = _xr.open_mfdataset(paths=(input_dir + '/*.nc4'))
-    data = data.rename(name_dict={'prec': output_varname})
-    mask = vector2array(basin_vmap, resolution, nodata)
-    inregion_cells = (mask == 1).sum()
-    min_cells = inregion_cells * missthresh
-    basin_area = inregion_cells * (resolution**2 / 1e6)
+    if source == 'bdcn':
+        # TODO: clip data to the basin.
+        data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc4'))
+        data = data.rename(name_dict={'prec': output_var_name})
+        mask = vector2array(
+            input_path=kwargs['input_mask_path'],
+            resolution=resolution,
+            nodata=kwargs['nodata']
+            )
+        inregion_cells = (mask == 1).sum()
+        min_cells = inregion_cells * kwargs['missthresh']
+        basin_area = inregion_cells * (resolution**2 / 1e6)
 
-    if flowstate == 'flow':
-        accum = (data[output_varname] * resolution**2).sum(['east', 'north'])
-        data_aggregated = accum / (basin_area * 1e6)
-
-    elif flowstate == 'state':
-        data_aggregated = data[output_varname].mean(['east', 'north'])
-
-    cells_per_date = data[output_varname].notnull().sum(['east', 'north'])
-
-    time_series = _xr.where(
-        cells_per_date < min_cells, _nan, data_aggregated
-        ).to_series()
-
-    new_indices = _pd.date_range(
-        start=sorted(time_series.index)[0],
-        end=sorted(time_series.index)[-1],
-        freq='1D'
-        )
-
-    # TODO: clip data to the basin.
-
-    return(time_series.reindex(new_indices))
-
-
-def open_chirps_ts(input_dir, output_varname, res):
-    data = _xr.open_mfdataset(paths=(input_dir + '/*.nc'))
-    data = data.rename(name_dict={'precip': output_varname})
-    data_accum_per_cell = data.copy().observed
-    data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
-
-    basin_area = 0
-    for lat in data_accum_per_cell.latitude:
-        for lon in data_accum_per_cell.longitude:
-            cell_area = degbox_2_area(
-                lat=lat,
-                lon=lon,
-                res=res
+        if kwargs['flowstate'] == 'flow':
+            accum = (data[output_var_name] * resolution**2).sum(
+                ['east', 'north']
                 )
-            data_accum_per_cell.loc[
-                {'latitude': lat, 'longitude': lon}
-                ].values[:] = (data.observed.loc[
+            data_aggregated = accum / (basin_area * 1e6)
+
+        elif kwargs['flowstate'] == 'state':
+            data_aggregated = data[output_var_name].mean(['east', 'north'])
+
+        cells_per_date = data[output_var_name].notnull().sum(['east', 'north'])
+        time_series = _xr.where(
+            cells_per_date < min_cells, _nan, data_aggregated
+            ).to_series()
+        new_indices = _pd.date_range(
+            start=sorted(time_series.index)[0],
+            end=sorted(time_series.index)[-1],
+            freq='1D'
+            )
+        return(time_series.reindex(new_indices))
+
+    elif source == 'chirps':
+        data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
+        data = data.rename(name_dict={'precip': output_var_name})
+        data_accum_per_cell = data.copy().observed
+        data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
+
+        basin_area = 0
+        for lat in data_accum_per_cell.latitude:
+            for lon in data_accum_per_cell.longitude:
+                cell_area = degbox_2_area(
+                    lat=lat,
+                    lon=lon,
+                    resolution=resolution
+                    )
+                data_accum_per_cell.loc[
                     {'latitude': lat, 'longitude': lon}
-                    ] * cell_area)
-            basin_area += cell_area
+                    ].values[:] = (data.observed.loc[
+                        {'latitude': lat, 'longitude': lon}
+                        ] * cell_area)
+                basin_area += cell_area
 
-    basin_precip = (data_accum_per_cell.sum(
-        ['latitude', 'longitude']
-        ) / basin_area).to_dataframe()['observed']
-#    basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
-    return(basin_precip)
+        basin_precip = (data_accum_per_cell.sum(
+            ['latitude', 'longitude']
+            ) / basin_area).to_dataframe()['observed']
+        # basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
+        return(basin_precip)
 
 
-def open_sflow_ts(input_file, basin_vmap, local_tz):
+def open_sflow_ts(input_file, input_mask_path, local_tz):
     # Open data source.
     data = _xr.open_dataset(input_file)
     data = data['disc_filled'].rename('observed').to_series()
@@ -230,7 +329,7 @@ def open_sflow_ts(input_file, basin_vmap, local_tz):
     data.index = data.index.tz_convert('UTC')
 
     # Convert data units from m3 s-1 to mm day-1 m-2.
-    basin_area = vmap_area(input_vmap=basin_vmap)
+    basin_area = vmap_area(input_path=input_mask_path)
     data = ((data * (24 * 60 * 60) * 1000) / basin_area)
     new_indices = _pd.date_range(
         start=data.index[0],

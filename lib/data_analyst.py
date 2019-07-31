@@ -6,8 +6,6 @@ Created on Sat Jul 13 18:27:56 2019
 @author: realrangel
 """
 import numpy as _np
-import pandas as _pd
-from PyEMD import EMD as _EMD
 from scipy import stats as _stats
 
 
@@ -45,7 +43,16 @@ def smooth_data(input_data, agg_type='mean', agg_scale=7):
 
 
 def trend_is_significant(x, method='m-k', alpha=0.05):
-    """
+    """Define if data is trended and wether it is significant or not.
+
+    Parameters:
+        x: pandas.Series
+            Input data (full record available).
+        method: string; optional
+            Statistical tecnique to detect a trend in the data.
+            Currently, it is available only the Mann-Kendall test
+            ('m-k'). Default is 'm-k'.
+
     Output:
         trend: tells the trend (increasing, decreasing or no trend)
         h: True (if trend is present) or False (if trend is absence)
@@ -87,119 +94,26 @@ def trend_is_significant(x, method='m-k', alpha=0.05):
             [e * (e - 1) * (2 * e + 5) for e in gr_data]
             ))
         uc = (S + (_np.sign(S) * -1)) / _np.sqrt(V)
-        p = 2 * (1 - _stats.norm.cdf(abs(uc)))  # two tail test
+        # p = 2 * (1 - _stats.norm.cdf(abs(uc)))  # two tail test
         h = abs(uc) > _stats.norm.ppf(1 - (alpha / 2))
 
-        if (uc < 0) and h:
-            trend = 'upwards'
+        # if (uc < 0) and h:
+        #     trend = 'upwards'
 
-        elif (uc > 0) and h:
-            trend = 'downwards'
+        # elif (uc > 0) and h:
+        #     trend = 'downwards'
 
-        else:
-            trend = 'no trend'
+        # else:
+        #     trend = 'no trend'
 
-        return(uc, p, h, trend)
+        return(h)
 
 
-def detrend_data(data, climatology=False, method='linear'):
-    detrended = data.copy()
-
-    if climatology:
-        # Is it correct to perform a detrending with separated subsets and then
-        # join them all together?
-#        for days in range(366):
-#            dates = _pd.date_range(
-#                start=(data.index[0] + _pd.Timedelta(str(days) + ' days')),
-#                end=_pd.datetime.today(),
-#                freq=_pd.DateOffset(years=1)
-#                )
-#            data_subset = data[dates]
-#
-#            if trend_is_significant(x=data_subset)[2]:
-#                if method == 'linear':
-#                    x = _np.arange(len(data_subset))
-#                    m, b, r_val, p_val, std_err = _stats.linregress(
-#                        x=x[data_subset.notnull()],
-#                        y=data_subset[data_subset.notnull()]
-#                        )
-#                    detrended_subset = data_subset.copy() - (m * x + b)
-#                    # trend = (data_subset - detrended_subset)
-#
-#                detrended[dates] = detrended_subset
-#
-#            else:
-#                pass
-        pass
-
-    else:
-#        if trend_is_significant(x=data)[2]:
-        # It takes too long to check if there is a trend.
-        if method == 'linear':
-            x = _np.arange(len(data))
-            m, b, r_val, p_val, std_err = _stats.linregress(
-                x=x[data.notnull()],
-                y=data[data.notnull()]
-                )
-            detrended = data.copy() - (m * x + b)
-            # trend = (data - detrended)
-
-        else:
-            pass
-
+def detrend_lineal(data):
+    x = _np.arange(len(data))
+    m, b, r_val, p_val, std_err = _stats.linregress(
+        x=x[data.notnull()],
+        y=data[data.notnull()]
+        )
+    detrended = data.copy() - (m * x + b)
     return(detrended)
-
-
-# ---------------------------------
-
-
-
-#for date in dates:
-#    data_subts = data[
-#        (data.index.month == date.month) &
-#        (data.index.day == date.day)
-#        ]
-#
-#    if detrend == 'linear':
-#        data_subts_detrended = data_subts.copy()
-#
-#        data_subts_detrended[data_subts_detrended.notnull()] = (
-#            _signal.detrend(
-#                data=data_subts[data_subts.notnull()],
-#                axis=0,
-#                type='linear'
-#                )
-#            )
-#
-#        trend_diff = (data_subts - data_subts_detrended)
-#
-#        if ref_level == 'mean':
-#            reference = float(
-#                data_subts_detrended.mean()
-#                )
-#
-#            reflev_part = trend_diff + reference
-#            reflev_part[reflev_part < 0] = 0  # Impossible neg values.
-#
-#        else:
-#            reference = float(
-#                data_subts_detrended.quantile(q=ref_level)
-#                )
-#
-#            reflev_part = trend_diff + reference
-#            reflev_part[reflev_part < 0] = 0  # Impossible neg values.
-#
-#    elif detrend == 'emd':
-#        data_subts_detrended = data_subts.copy()
-#        emd = _EMD()
-#
-#        data_subts_detrended[data_subts_detrended.notnull()] = emd(
-#            data_subts[data_subts.notnull()].values
-#            )
-#
-#    elif detrend is False:
-#        if ref_level == 'mean':
-#            reflev_part = float(data_subts.mean())
-#
-#        else:
-#            reflev_part = float(data_subts.quantile(q=ref_level))

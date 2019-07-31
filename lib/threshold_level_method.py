@@ -31,12 +31,38 @@ REFERENCES
 
 import sys as _sys
 
-from PyEMD import EMD as _EMD
-from scipy import signal as _signal
 import numpy as _np
 import pandas as _pd
 
 import lib.data_manager as dmgr
+import lib.data_analyst as dnlst
+
+
+def anomaly(data, detrend='linear', thresh=0.5):
+    """Compute the reference level.
+    """
+    output = data.copy()
+
+    for delta_days in range(366):
+        dates = _pd.date_range(
+            start=(data.index[0] + _pd.Timedelta(str(delta_days) + ' days')),
+            end=data.index[-1],
+            freq=_pd.DateOffset(years=1)
+            )
+        data_subset = data[dates]
+
+        if dnlst.trend_is_significant(x=data_subset) and detrend == 'linear':
+            data_subset = dnlst.detrend_lineal(data_subset)
+
+        if thresh == 'mean':
+            reference_level = float(data_subset.mean())
+
+        else:
+            reference_level = float(data_subset.quantile(q=thresh))
+
+        output[dates] = data_subset - reference_level
+
+    return(output)
 
 
 def _sign_wo_zero(value):
@@ -45,74 +71,6 @@ def _sign_wo_zero(value):
 
     else:
         return(_np.sign(value))
-
-
-def reference_value(data, detrend='linear', ref_level=0.5):
-    # Compute the reference level.
-    dates = _pd.date_range(
-        start='1981-01-01',
-        end='1981-12-31',
-        freq=data.index.freqstr
-        )
-
-    reflev = data.copy() * _np.nan
-
-    for date in dates:
-        data_subts = data[
-            (data.index.month == date.month) &
-            (data.index.day == date.day)
-            ]
-
-        if detrend == 'linear':
-            data_subts_detrended = data_subts.copy()
-
-            data_subts_detrended[data_subts_detrended.notnull()] = (
-                _signal.detrend(
-                    data=data_subts[data_subts.notnull()],
-                    axis=0,
-                    type='linear'
-                    )
-                )
-
-            trend_diff = (data_subts - data_subts_detrended)
-
-            if ref_level == 'mean':
-                reference = float(
-                    data_subts_detrended.mean()
-                    )
-
-                reflev_part = trend_diff + reference
-                reflev_part[reflev_part < 0] = 0  # Impossible neg values.
-
-            else:
-                reference = float(
-                    data_subts_detrended.quantile(q=ref_level)
-                    )
-
-                reflev_part = trend_diff + reference
-                reflev_part[reflev_part < 0] = 0  # Impossible neg values.
-
-        elif detrend == 'emd':
-            data_subts_detrended = data_subts.copy()
-            emd = _EMD()
-
-            data_subts_detrended[data_subts_detrended.notnull()] = emd(
-                data_subts[data_subts.notnull()].values
-                )
-
-        elif detrend is False:
-            if ref_level == 'mean':
-                reflev_part = float(data_subts.mean())
-
-            else:
-                reflev_part = float(data_subts.quantile(q=ref_level))
-
-        reflev[
-            (reflev.index.month == date.month) &
-            (reflev.index.day == date.day)
-            ] = reflev_part
-
-    return(reflev)
 
 
 def _sign_grouper(anomalies):
@@ -142,20 +100,6 @@ def _sign_grouper(anomalies):
     return(anomalies.groupby(runs))
 
 
-def anomaly(data, detrend='linear', ref_level=0.5):
-    """Returns the deviation of the indicator values from
-    reference level.
-
-    PARAMETERS
-    """
-    # Temporal aggregation of the drought indicator.
-    return(data - reference_value(
-        data=data,
-        detrend=detrend,
-        ref_level=ref_level
-        ))
-
-
 def runs_sum(runs):
     """Computes the sum of all deviations between successive
     downcrosses and upcrosses. Indicates the deficiency of water
@@ -176,14 +120,14 @@ def runs_sum(runs):
 
 
 def get_runs(
-        data, pooling_method=None, detrend='linear', ref_level=0.5,
+        data, pooling_method=None, detrend='linear', thresh=0.5,
         show_positives=False, window=None
         ):
 
     anomalies = anomaly(
         data=data,
         detrend=detrend,
-        ref_level=ref_level
+        thresh=thresh
         )
 
     runs = {
@@ -209,7 +153,7 @@ def get_runs(
             anomalies_ma = anomaly(
                 data=data_ma,
                 detrend=detrend,
-                ref_level=ref_level
+                thresh=thresh
                 )
 
             grouper_ma = _sign_grouper(anomalies=anomalies_ma)
@@ -349,17 +293,17 @@ def runs_length(runs):
         ))
 
 
-def sum_length_ratio(show_positives=True, detrend='linear', ref_level=0.5):
+def sum_length_ratio(show_positives=True, detrend='linear', thresh=0.5):
     return(
         runs_sum(
             show_positives=show_positives,
             detrend=detrend,
-            ref_level=ref_level
+            thresh=thresh
             ) /
         runs_length(
             show_positives=show_positives,
             detrend=detrend,
-            ref_level=ref_level
+            thresh=thresh
             )
         )
 
@@ -380,7 +324,7 @@ def run_peak(runs):
 
 def runs_cumsum(
         anomalies, pooling_method, show_positives=True, detrend='linear',
-        ref_level=0.5
+        thresh=0.5
         ):
     return(
         _sign_grouper(

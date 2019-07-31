@@ -31,10 +31,7 @@ import lib.data_manager as dmgr
 import lib.plot_time_series as plots
 import lib.threshold_level_method as tlm
 
-config = dmgr.Configurations(
-    'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis'
-    '/02_drought_analysis/15014/drought_t.toml'
-    )
+config = dmgr.Configurations('drought_t.toml')
 
 if config.vars['precip']['input_dir'] is not False:
     # Retrieve the precipitation (precip) data.
@@ -49,15 +46,18 @@ if config.vars['precip']['input_dir'] is not False:
 #        flowstate='flow'
 #        )
 
-    precip_raw = dmgr.open_chirps_ts(
-        input_dir=config.vars['precip']['input_dir'],
-        output_varname='observed',
-        res=0.05
-        )
+#    precip_raw = dmgr.open_chirps_ts(
+#        input_dir=config.vars['precip']['input_dir'],
+#        output_varname='observed',
+#        res=0.05
+#        )
 
-#    # Detrend the data
-#    precip_detrended = dnlst.detrend_data(
-#        data=precip_raw)
+    precip_raw = dmgr.open_precip(
+        source=config.vars['precip']['source'],
+        input_data_dir=config.vars['precip']['input_dir'],
+        output_var_name=config.vars['precip']['output_var_name'],
+        resolution=config.vars['precip']['input_data_res'],
+        )
 
     # Aggregate the data.
     precip = dnlst.smooth_data(
@@ -65,7 +65,6 @@ if config.vars['precip']['input_dir'] is not False:
         agg_type=config.vars['precip']['smoothing_type'],
         agg_scale=config.vars['precip']['smoothing_scale']
         )
-
 
 if config.vars['sflow']['input_file'] is not False:
     # Retrieve the streamflow data.
@@ -75,10 +74,6 @@ if config.vars['sflow']['input_file'] is not False:
 #        resolution=config.grid['res'],
         nodata=config.grid['nodata']
         )
-
-#    # Detrend the data
-#    precip_detrended = dnlst.detrend_data(
-#        data=sflow_raw)
 
     # Aggregate the data.
     sflow = dnlst.scale_data(

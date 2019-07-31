@@ -1,16 +1,19 @@
 # General
 [vars]
-    detrend = 'emd'
-    basin_vmap_epsg4326 = '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
-    basin_vmap_epsg6372 = '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
+    detrend = 'linear'
+    basin_vmap_epsg4326 = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
+    basin_vmap_epsg6372 = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
 
     [vars.precip]
-        input_dir = '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis/01_data/15014/precip_chirps2'
+        source = 'chirps'
+        input_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/precip_chirps2'
+        input_data_res = 5000
+        output_var_name = 'observed'
         smoothing_scale = 7
         smoothing_type = 'mean'
 
     [vars.sflow]
-        input_file = '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis/01_data/15014/sflow/bandas_100_15014_qc.nc4'
+        input_file = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/sflow/bandas_100_15014_qc.nc4'
         smoothing_scale = 1
         smoothing_type = 'mean'
 
@@ -36,17 +39,15 @@
     #   missthresh: float
     #     Maximum ratio of missing values allowed in the ??? to perform ???.
     ###
-
     xmin = 3433000
     xmax = 3454200
     ymin = 612300
     ymax = 649700
-    res = 5000
     nodata = -32768
     missthresh = 0.95   # TODO: Move this configuration to a more suitable dictionary of settings.
 
 [plot]
     plot_time_series = true
-    output_dir = '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis/02_drought_analysis/15014/plots'
+    output_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/02_drought_analysis/15014/plots'
     plot_start = '04-01'
     plot_end = '03-31'
