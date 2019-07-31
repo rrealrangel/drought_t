@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """DROUGHT ASSESSMENT
 DESCRIPTION
@@ -10,15 +10,16 @@ AUTHOR
 LICENSE
     GNU General Public License
 """
-import sys
+import math
+import sys as _sys
 
-from numpy import nan
-from pathlib2 import Path
-import gdal
-import ogr
-import pandas as pd
+from numpy import nan as _nan
+from pathlib2 import Path as _Path
+import gdal as _gdal
+import ogr as _ogr
+import pandas as _pd
 import toml as _toml
-import xarray as xr
+import xarray as _xr
 
 
 class Configurations():
@@ -32,34 +33,75 @@ class Configurations():
             setattr(self, key, value)
 
 
-def list_files(parent_dir, ext):
+def list_files(input_dir, input_patt):
     """List all files in a directory with a specified extension.
 
     Parameters
-        parent_dir: string
+        input_dir: string
             Full path of the directory of which the files are to be listed.
-        ext: string or list of strings
+        input_patt: string or list of strings
             Extension(s) of the files to be listed.
     """
-    parent_dir = Path(parent_dir)
+    input_dir = _Path(input_dir)
     files_list = []
 
-    if isinstance(ext, str):
-        patterns = ['**/*' + ext]
+    if isinstance(input_patt, str):
+        patterns = ['**/*' + input_patt]
 
-    elif isinstance(ext, list):
-        patterns = ['**/*' + i for i in ext]
+    elif isinstance(input_patt, list):
+        patterns = ['**/*' + i for i in input_patt]
 
     for patt in patterns:
-        files_list.extend(parent_dir.glob(pattern=patt))
+        files_list.extend(input_dir.glob(pattern=patt))
 
     return([str(i) for i in files_list])
 
 
-def vector2array(basin_vmap, resolution, nodata):
+def vmap_area(input_path):
+    source_ds = _ogr.Open(input_path)
+    source_layer = source_ds.GetLayer(0)
+    feature = source_layer[0]
+    geom = feature.GetGeometryRef()
+    return(geom.GetArea())
+
+
+def degdist_2_meters(lat1, lat2, lon1, lon2):
+    """
+    https://stackoverflow.com/a/11172685/6331477
+    """
+    R = 6378137  # Radius of earth in meters
+    dLat = lat2 * math.pi / 180 - lat1 * math.pi / 180
+    dLon = lon2 * math.pi / 180 - lon1 * math.pi / 180
+    a = ((math.sin(dLat / 2) * math.sin(dLat / 2)) +
+         (math.cos(lat1 * math.pi / 180) *
+          math.cos(lat2 * math.pi / 180) *
+          math.sin(dLon / 2) *
+          math.sin(dLon / 2)))
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    d = R * c
+    return(d)
+
+
+def degbox_2_area(lat, lon, resolution):
+    w = degdist_2_meters(
+        lat1=(lat),
+        lat2=(lat),
+        lon1=(lon - resolution / 2),
+        lon2=(lon + resolution / 2)
+        )
+    h = degdist_2_meters(
+        lat1=(lat - resolution / 2),
+        lat2=(lat + resolution / 2),
+        lon1=(lon),
+        lon2=(lon)
+        )
+    return(w * h)
+
+
+def vector2array(input_path, resolution, nodata):
     """
     Parameters:
-        basin_vmap : string
+        input_path : string
         resolution : float
         nodata : float
 
@@ -67,7 +109,7 @@ def vector2array(basin_vmap, resolution, nodata):
         https://bit.ly/2HxeOng
     """
     # Open the data source and read in the extent
-    source_ds = ogr.Open(basin_vmap)
+    source_ds = _ogr.Open(input_path)
     source_layer = source_ds.GetLayer(0)
     xmin, xmax, ymin, ymax = source_layer.GetExtent()
 
@@ -86,128 +128,215 @@ def vector2array(basin_vmap, resolution, nodata):
     # Create the destination data source
     cols = int((xmax - xmin) / resolution)
     rows = int((ymax - ymin) / resolution)
-    output_source = gdal.GetDriverByName('MEM').Create(
-        '', cols, rows, gdal.GDT_Byte
+    output_source = _gdal.GetDriverByName('MEM').Create(
+        '', cols, rows, _gdal.GDT_Byte
         )
     output_source.SetGeoTransform((xmin, resolution, 0, ymax, 0, -resolution))
     output_band = output_source.GetRasterBand(1)
     output_band.SetNoDataValue(nodata)
 
     # Rasterize
-    gdal.RasterizeLayer(output_source, [1], source_layer, burn_values=[1])
+    _gdal.RasterizeLayer(output_source, [1], source_layer, burn_values=[1])
 
     # Read as array
     return(output_band.ReadAsArray().astype(int))
 
 
-def clim_time_series(
-        input_dir, basin_vmap, resolution, nodata, missthresh, variable,
-        flowstate
-        ):
-    """Reads a datacube (t, x, y) and generates a time series.
+#def open_clim_ts(
+#        input_data_dir, output_var_name, resolution, input_mask_path, nodata,
+#        missthresh, flowstate
+#        ):
+#    """Reads a datacube (t, x, y) and generates a time series.
+#
+#    Parameters:
+#        input_data_dir : string
+#        input_mask_path : string
+#        resolution : float
+#        nodata : float
+#        missthresh : float
+#        output_var_name : string
+#        flowstate : string
+#
+#    Outputs:
+#    """
+#    data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc4'))
+#    data = data.rename(name_dict={'prec': output_var_name})
+#    mask = vector2array(
+#        input_path=input_mask_path,
+#        resolution=resolution,
+#        nodata=nodata
+#        )
+#    inregion_cells = (mask == 1).sum()
+#    min_cells = inregion_cells * missthresh
+#    basin_area = inregion_cells * (resolution**2 / 1e6)
+#
+#    if flowstate == 'flow':
+#        accum = (data[output_var_name] * resolution**2).sum(['east', 'north'])
+#        data_aggregated = accum / (basin_area * 1e6)
+#
+#    elif flowstate == 'state':
+#        data_aggregated = data[output_var_name].mean(['east', 'north'])
+#
+#    cells_per_date = data[output_var_name].notnull().sum(['east', 'north'])
+#
+#    time_series = _xr.where(
+#        cells_per_date < min_cells, _nan, data_aggregated
+#        ).to_series()
+#
+#    new_indices = _pd.date_range(
+#        start=sorted(time_series.index)[0],
+#        end=sorted(time_series.index)[-1],
+#        freq='1D'
+#        )
+#
+#    # TODO: clip data to the basin.
+#
+#    return(time_series.reindex(new_indices))
+
+
+#def open_chirps_ts(input_data_dir, output_var_name, resolution):
+#    data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
+#    data = data.rename(name_dict={'precip': output_var_name})
+#    data_accum_per_cell = data.copy().observed
+#    data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
+#
+#    basin_area = 0
+#    for lat in data_accum_per_cell.latitude:
+#        for lon in data_accum_per_cell.longitude:
+#            cell_area = degbox_2_area(
+#                lat=lat,
+#                lon=lon,
+#                resolution=resolution
+#                )
+#            data_accum_per_cell.loc[
+#                {'latitude': lat, 'longitude': lon}
+#                ].values[:] = (data.observed.loc[
+#                    {'latitude': lat, 'longitude': lon}
+#                    ] * cell_area)
+#            basin_area += cell_area
+#
+#    basin_precip = (data_accum_per_cell.sum(
+#        ['latitude', 'longitude']
+#        ) / basin_area).to_dataframe()['observed']
+##    basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
+#    return(basin_precip)
+
+
+def open_precip(source, input_data_dir, output_var_name, resolution, **kwargs):
+    """Open the precipitation data source.
+
+    This functions joints the functions open_clim_ts() and
+        open_chirps_ts() of erlier versions.
 
     Parameters:
-        input_dir : string
-        basin_vmap : string
+        source : string
+            Options are 'bdcn' and 'chirps'.
+        input_data_dir : string
+            The path of the local directory that contains the input
+            precipitation datasets.
+        output_var_name : string
+            The name assigned to the precipitation variable in the
+            output data array.
         resolution : float
-        nodata : float
-        missthresh : float
-        variable : string
-        flowstate : string
+            Spatial resolution of the input data. Future versions will
+            get this value from the input data.
+        kwargs['input_mask_path'] : string
+            Used only if source == 'bdcn'. Path of the file of the
+            vector map (Shapefile format) used to mask the input data.
+        kwargs['nodata'] : int
+            Used only if source == 'bdcn'. Value assigned to empty
+            cells.
+        kwargs['missthresh'] : float
+            Used only if source == 'bdcn'. Minimum ratio of available
+            data to perform the area aggregation.
+        kwargs['flowstate'] : string
+            Used only if source == 'bdcn'. Wether the input data is a
+            flow or a state variable. This parameter will be removed
+            in future versions.
 
-    Outputs:
+    # TODO: Optimize this function.
     """
-    paths = list_files(
-        parent_dir=input_dir,
-        ext=['.nc', '.nc4']
-        )
-
-    data = xr.open_mfdataset(paths)
-    data = data.rename(name_dict={'__xarray_dataarray_variable__': variable})
-    mask = vector2array(basin_vmap, resolution, nodata)
-    inregion_cells = (mask == 1).sum()
-    min_cells = inregion_cells * missthresh
-    basin_area = inregion_cells * (resolution**2 / 1e6)
-
-    if flowstate == 'flow':
-        accum = (data[variable] * resolution**2).sum(['east', 'north'])
-        data_aggregated = accum / (basin_area * 1e6)
-
-    elif flowstate == 'state':
-        data_aggregated = data[variable].mean(['east', 'north'])
-
-    cells_per_date = data[variable].notnull().sum(['east', 'north'])
-
-    time_series = xr.where(
-        cells_per_date < min_cells, nan, data_aggregated
-        ).to_series()
-
-    return(time_series.reindex(sorted(time_series.index)))
-
-
-def sflo_time_series(input_file, basin_vmap, resolution, nodata):
-    data = xr.open_dataset(input_file)
-    data = data['disc_filled'].rename('observed')
-    data = data * (24 * 60 * 60) * 1000   # Convert m3/s to mm/d
-    mask = vector2array(basin_vmap, resolution, nodata)
-    inregion_cells = (mask == 1).sum()
-    basin_area = inregion_cells * (resolution**2 / 1e6)  # Prevent overflow.
-    time_series = (data / (basin_area * 1e6)).to_series()
-    time_series.index = time_series.index + pd.Timedelta(8, 'h')
-    return(time_series.reindex(sorted(time_series.index)))
-
-
-def scale_data(input_data, scale=10):
-    """Scale input data following a given method (resample or rolling).
-
-    PARAMETERS
-        input_data: pandas.Series
-            The input time series in a form of a pandas.Series.
-        scale: string or integer (optional)
-            Temporal scale to which transform the input time series. It
-            is formatted as pandas offset strings (to learn more about
-            the offset strings, see https://bit.ly/2C4P9ig). Default is
-            '1D'. Note: if method is 'roll', scale must be a fixed
-            frequency.
-        method: string (optional)
-            Defines the method by which the input time series is
-            scaled. The options are 'resample' and 'roll'. Default is
-            'resample'.
-        function: string (optional)
-            Method for down/re-sampling. Default is 'sum'. Flux
-            variable might use 'sum', while state variables mihgt use
-            'mean'.
-    """
-    scaler = input_data.rolling(window=scale, center=True)
-    return(scaler.mean())
-
-
-def esaccism_daily2annual_storing(
-        input_dir, output_dir, xmin, ymin, xmax, ymax
-        ):
-    daily_paths = list_files(
-        parent_dir=input_dir,
-        ext=['.nc', '.nc4']
-        )
-
-    for year in range(1978, 2019):
-        year_paths = [i for i in daily_paths if ('-' + str(year)) in i]
-
-        data = xr.open_mfdataset(
-            year_paths,
-            autoclose=True
+    if source == 'bdcn':
+        # TODO: clip data to the basin.
+        data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc4'))
+        data = data.rename(name_dict={'prec': output_var_name})
+        mask = vector2array(
+            input_path=kwargs['input_mask_path'],
+            resolution=resolution,
+            nodata=kwargs['nodata']
             )
+        inregion_cells = (mask == 1).sum()
+        min_cells = inregion_cells * kwargs['missthresh']
+        basin_area = inregion_cells * (resolution**2 / 1e6)
 
-        clip_study_area = data.where(
-            (data.lat >= ymin) &
-            (data.lat <= ymax) &
-            (data.lon >= xmin) &
-            (data.lon <= xmax),
-            drop=True
+        if kwargs['flowstate'] == 'flow':
+            accum = (data[output_var_name] * resolution**2).sum(
+                ['east', 'north']
+                )
+            data_aggregated = accum / (basin_area * 1e6)
+
+        elif kwargs['flowstate'] == 'state':
+            data_aggregated = data[output_var_name].mean(['east', 'north'])
+
+        cells_per_date = data[output_var_name].notnull().sum(['east', 'north'])
+        time_series = _xr.where(
+            cells_per_date < min_cells, _nan, data_aggregated
+            ).to_series()
+        new_indices = _pd.date_range(
+            start=sorted(time_series.index)[0],
+            end=sorted(time_series.index)[-1],
+            freq='1D'
             )
+        return(time_series.reindex(new_indices))
 
-        output_name = output_dir + '/' + str(year) + '.nc4'
-        clip_study_area.to_netcdf(path=output_name)
+    elif source == 'chirps':
+        data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
+        data = data.rename(name_dict={'precip': output_var_name})
+        data_accum_per_cell = data.copy().observed
+        data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
+
+        basin_area = 0
+        for lat in data_accum_per_cell.latitude:
+            for lon in data_accum_per_cell.longitude:
+                cell_area = degbox_2_area(
+                    lat=lat,
+                    lon=lon,
+                    resolution=resolution
+                    )
+                data_accum_per_cell.loc[
+                    {'latitude': lat, 'longitude': lon}
+                    ].values[:] = (data.observed.loc[
+                        {'latitude': lat, 'longitude': lon}
+                        ] * cell_area)
+                basin_area += cell_area
+
+        basin_precip = (data_accum_per_cell.sum(
+            ['latitude', 'longitude']
+            ) / basin_area).to_dataframe()['observed']
+        # basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
+        return(basin_precip)
+
+
+def open_sflow_ts(input_file, input_mask_path, local_tz):
+    # Open data source.
+    data = _xr.open_dataset(input_file)
+    data = data['disc_filled'].rename('observed').to_series()
+
+    # Add 8 hours to the timestamps (actual measuring time) and
+    # convert them from local to UTC
+    data.index = data.index + _pd.Timedelta(8, 'h')
+    data.index = data.index.tz_localize(local_tz)
+    data.index = data.index.tz_convert('UTC')
+
+    # Convert data units from m3 s-1 to mm day-1 m-2.
+    basin_area = vmap_area(input_path=input_mask_path)
+    data = ((data * (24 * 60 * 60) * 1000) / basin_area)
+    new_indices = _pd.date_range(
+        start=data.index[0],
+        end=data.index[-1],
+        freq='1D'
+        )
+    return(data.reindex(new_indices))
 
 
 def progress_message(current, total, message="- Processing", units=None):
@@ -229,16 +358,16 @@ def progress_message(current, total, message="- Processing", units=None):
     """
     if units is not None:
         progress = float(current)/total
-        sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
+        _sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
                 message, progress * 100, units))
 
     else:
         progress = float(current)/total
-        sys.stdout.write("\r    {} ({:.1f} % processed)".format(
+        _sys.stdout.write("\r    {} ({:.1f} % processed)".format(
                 message, progress * 100))
 
     if progress < 1:
-        sys.stdout.flush()
+        _sys.stdout.flush()
 
     else:
-        sys.stdout.write('\n')
+        _sys.stdout.write('\n')

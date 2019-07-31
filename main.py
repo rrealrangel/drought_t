@@ -1,3 +1,4 @@
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """DROUGHT ASSESSMENT
 DESCRIPTION
@@ -25,98 +26,65 @@ REFERENCES
 """
 import os
 
+import lib.data_analyst as dnlst
 import lib.data_manager as dmgr
-import lib.plot_time_series as plt
+import lib.plot_time_series as plots
 import lib.threshold_level_method as tlm
 
-config = dmgr.Configurations(
-    '/home/realrangel/MEGA/projects/multiannual/04-doctorado/analysis'
-    '/02_drought_analysis/15014/config.toml'
-    )
+config = dmgr.Configurations('drought_t.toml')
 
-# TODO: Make a unique function for any variable.
-# Retrieve variables precipitation data.
-if config.vars['prec']['input_dir'] is not False:
-    prec_raw = dmgr.clim_time_series(
-        input_dir=config.vars['prec']['input_dir'],
-        basin_vmap=config.vars['basin_vmap'],
-        resolution=config.grid['res'],
-        nodata=config.grid['nodata'],
-        missthresh=config.grid['missthresh'],
-        variable='observed',
-        flowstate='flow'
+if config.vars['precip']['input_dir'] is not False:
+    # Retrieve the precipitation (precip) data.
+#    precip_raw = dmgr.open_clim_ts(
+#        input_dir=config.vars['precip']['input_dir'],
+#        basin_vmap_epsg4326=config.vars['basin_vmap_epsg4326'],
+#        basin_vmap_epsg6372=config.vars['basin_vmap_epsg6372'],
+#        resolution=config.grid['res'],
+#        nodata=config.grid['nodata'],
+#        missthresh=config.grid['missthresh'],
+#        output_varname='observed',
+#        flowstate='flow'
+#        )
+
+#    precip_raw = dmgr.open_chirps_ts(
+#        input_dir=config.vars['precip']['input_dir'],
+#        output_varname='observed',
+#        res=0.05
+#        )
+
+    precip_raw = dmgr.open_precip(
+        source=config.vars['precip']['source'],
+        input_data_dir=config.vars['precip']['input_dir'],
+        output_var_name=config.vars['precip']['output_var_name'],
+        resolution=config.vars['precip']['input_data_res'],
         )
 
-else:
-    prec_raw = None
+    # Aggregate the data.
+    precip = dnlst.smooth_data(
+        input_data=precip_raw,
+        agg_type=config.vars['precip']['smoothing_type'],
+        agg_scale=config.vars['precip']['smoothing_scale']
+        )
 
-# Retrieve stream flow data.
-if config.vars['sflo']['input_file'] is not False:
-    sflo_raw = dmgr.sflo_time_series(
-        input_file=config.vars['sflo']['input_file'],
-        basin_vmap=config.vars['basin_vmap'],
-        resolution=config.grid['res'],
+if config.vars['sflow']['input_file'] is not False:
+    # Retrieve the streamflow data.
+    sflow_raw = dmgr.open_sflow_ts(
+        input_file=config.vars['sflow']['input_file'],
+        basin_vmap=config.vars['basin_vmap_epsg6372'],
+#        resolution=config.grid['res'],
         nodata=config.grid['nodata']
         )
 
-else:
-    sflo_raw = None
-
-# Retrieve soil moisture data.
-if config.vars['smoi']['input_dir'] is not False:
-    smoi_raw = dmgr.smoi_time_series(
-        input_dir=config.vars['smoi']['input_dir'],
-        basin_vmap=config.vars['basin_vmap'],
-        resolution=config.grid['res'],
-        nodata=config.grid['nodata']
+    # Aggregate the data.
+    sflow = dnlst.scale_data(
+        input_data=sflow_raw,
+        scale=config.vars['sflow']['agg_scale']
         )
 
-else:
-    smoi_raw = None
-
-# Retrieve temperature data.
-if config.vars['tmea']['input_dir'] is not False:
-    tmea_raw = dmgr.clim_time_series(
-        input_dir=config.vars['tmea']['input_dir'],
-        basin_vmap=config.vars['basin_vmap'],
-        resolution=config.grid['res'],
-        nodata=config.grid['nodata'],
-        missthresh=config.grid['missthresh'],
-        variable='observed',
-        flowstate='state'
-        )
-
-else:
-    tmea_raw = None
-
-# Aggregate data.
-if prec_raw is not None:
-    prec = dmgr.scale_data(
-        input_data=prec_raw,
-        scale=config.vars['prec']['agg_scale']
-        )
-
-if sflo_raw is not None:
-    sflo = dmgr.scale_data(
-        input_data=sflo_raw,
-        scale=config.vars['sflo']['agg_scale']
-        )
-
-if smoi_raw is not None:
-    smoi = dmgr.scale_data(
-        input_data=smoi_raw,
-        scale=config.vars['smoi']['agg_scale']
-        )
-
-if tmea_raw is not None:
-    tmea = dmgr.scale_data(
-        input_data=tmea_raw,
-        scale=config.vars['tmea']['agg_scale']
-        )
 
 # Precipitation deficit
-precdef_run, precdef_onset, precdef_end = tlm.get_runs(
-    data=prec,
+precip_anomaly_run, precip_anomaly_onset, precip_anomaly_end = tlm.get_runs(
+    data=precip,
     pooling_method=config.drought['pooling_method'],
     detrend=config.vars['detrend'],
     ref_level=config.drought['ref_level'],
@@ -124,36 +92,36 @@ precdef_run, precdef_onset, precdef_end = tlm.get_runs(
     window=config.drought['ma_window']
     )
 
-precdef_magnitude = tlm.runs_sum(runs=precdef_run)
+precip_anomaly_magnitude = tlm.runs_sum(runs=precip_anomaly_run)
 
 
-precdef_run_large = precdef_run[
-    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+precip_anomaly_run_l = precip_anomaly_run[
+    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
     ]
 
-precdef_peak = tlm.run_peak(
-    runs=precdef_run
+precip_anomaly_peak = tlm.run_peak(
+    runs=precip_anomaly_run
     )
 
-precdef_peak_large = tlm.run_peak(
-    runs=precdef_run_large
+precip_anomaly_peak_l = tlm.run_peak(
+    runs=precip_anomaly_run_l
     )
 
-precdef_onset_large = precdef_onset[
-    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+precip_anomaly_onset_l = precip_anomaly_onset[
+    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
     ]
 
-precdef_end_large = precdef_end[
-    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+precip_anomaly_end_l = precip_anomaly_end[
+    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
     ]
 
-precdef_magnitude_large = precdef_magnitude[
-    precdef_magnitude <= precdef_magnitude.quantile(q=0.1)
+precip_anomaly_magnitude_l = precip_anomaly_magnitude[
+    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
     ]
 
 # Stream flow deficit
-sflodef_run, sflodef_onset, sflodef_end = tlm.get_runs(
-    data=sflo,
+sflow_anomaly_run, sflow_anomaly_onset, sflow_anomaly_end = tlm.get_runs(
+    data=sflow,
     pooling_method=config.drought['pooling_method'],
     detrend=config.vars['detrend'],
     ref_level=config.drought['ref_level'],
@@ -161,62 +129,62 @@ sflodef_run, sflodef_onset, sflodef_end = tlm.get_runs(
     window=config.drought['ma_window']
     )
 
-sflodef_magnitude = tlm.runs_sum(runs=sflodef_run)
+sflow_anomaly_magnitude = tlm.runs_sum(runs=sflow_anomaly_run)
 
-sflodef_run_large = sflodef_run[
-    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+sflow_anomaly_run_l = sflow_anomaly_run[
+    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
     ]
 
-sflodef_peak = tlm.run_peak(
-    runs=sflodef_run
+sflow_anomaly_peak = tlm.run_peak(
+    runs=sflow_anomaly_run
     )
 
-sflodef_peak_large = tlm.run_peak(
-    runs=sflodef_run_large
+sflow_anomaly_peak_l = tlm.run_peak(
+    runs=sflow_anomaly_run_l
     )
 
-sflodef_onset_large = sflodef_onset[
-    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+sflow_anomaly_onset_l = sflow_anomaly_onset[
+    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
     ]
 
-sflodef_end_large = sflodef_end[
-    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+sflow_anomaly_end_l = sflow_anomaly_end[
+    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
     ]
 
-sflodef_magnitude_large = sflodef_magnitude[
-    sflodef_magnitude <= sflodef_magnitude.quantile(q=0.1)
+sflow_anomaly_magnitude_l = sflow_anomaly_magnitude[
+    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
     ]
 
 if config.plot['plot_time_series']:
     if not os.path.isdir(config.plot['output_dir']):
         os.mkdir(config.plot['output_dir'])
 
-    series1_ref = tlm.reference_value(data=prec)
-    series2_ref = tlm.reference_value(data=sflo)
+    series1_ref = tlm.reference_value(data=precip)
+    series2_ref = tlm.reference_value(data=sflow)
 
     first_year = max([
         i.index.min()
-        for i in [prec_raw, sflo_raw, tmea_raw]
+        for i in [precip, sflow]
         if i is not None
         ]).year
 
     last_year = min([
         i.index.max()
-        for i in [prec_raw, sflo_raw, tmea_raw]
+        for i in [precip, sflow]
         if i is not None
         ]).year + 1
 
-    for date in range(first_year, last_year):
+    for year in range(first_year, last_year):
         output_file = (
-            config.plot['output_dir'] + '/drought_' + str(date) + '-' +
-            str(date + 1)[-2:] + '.png'
+            config.plot['output_dir'] + '/drought_' + str(year) + '-' +
+            str(year + 1)[-2:] + '.png'
             )
 
-        plt.plot_ts(
-            series1=prec,
-            series2=sflo,
-            start_date=(str(date) + '-' + config.plot['plot_start']),
-            end_date=(str(date + 1) + '-' + config.plot['plot_end']),
+        plots.plot_ts(
+            series1=precip,
+            series2=sflow,
+            start_date=(str(year) + '-' + config.plot['plot_start']),
+            end_date=(str(year + 1) + '-' + config.plot['plot_end']),
             output_file=output_file,
             series1_ref=series1_ref,
             series2_ref=series2_ref
