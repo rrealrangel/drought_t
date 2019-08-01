@@ -1,0 +1,56 @@
+# General
+[vars]
+    detrend = 'linear'
+    basin_vmap_epsg4326 = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
+    basin_vmap_epsg6372 = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
+
+    [vars.precip]
+        source = 'chirps'
+        input_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/precip_chirps2'
+        input_data_res = 5000
+        output_var_name = 'observed'
+        smoothing_scale = 30
+        smoothing_type = 'mean'
+        time_zone = 'UTC' 
+
+    [vars.sflow]
+        input_file = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/sflow/bandas_100_15014_qc.nc4'
+        smoothing_scale = 30
+        smoothing_type = 'mean'
+        time_zone = 'America/Mexico_City' 
+
+
+# Drought definition
+[drought]
+    ref_level = 0.50
+    pooling_method = 'ma'
+    ma_window = 10
+    show_positives = false
+    large_runs = 0.1
+
+# Region
+[region]
+    ###
+    # Parameters
+    #   xmin: float
+    #   xmax: float
+    #   ymin: float
+    #   ymax: float
+    #   res: float
+    #   nodata: integer
+    #     Value to assign when empty data.
+    #   missthresh: float
+    #     Maximum ratio of missing values allowed in the ??? to perform ???.
+    ###
+    xmin = 3433000
+    xmax = 3454200
+    ymin = 612300
+    ymax = 649700
+    nodata = -32768
+    missthresh = 0.95   # TODO: Move this configuration to a more suitable dictionary of settings.
+
+[plot]
+    plot_time_series = true
+    output_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/02_drought_analysis/15014/plots'
+    plot_start = '04-01'
+    plot_end = '03-31'
