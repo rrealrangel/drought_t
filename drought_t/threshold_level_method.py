@@ -34,8 +34,8 @@ import sys as _sys
 import numpy as _np
 import pandas as _pd
 
-import lib.data_manager as dmgr
-import lib.data_analyst as dnlst
+import drought_t.data_manager as dmgr
+import drought_t.data_analyst as dnlst
 
 
 def anomaly(data, detrend='linear', thresh=0.5):
@@ -98,25 +98,6 @@ def _sign_grouper(anomalies):
     runs[anomalies.isnull()] = _np.nan
     runs = runs - (runs.min() - 1)
     return(anomalies.groupby(runs))
-
-
-def runs_sum(runs):
-    """Computes the sum of all deviations between successive
-    downcrosses and upcrosses. Indicates the deficiency of water
-    in the variable analyzed or the severity of drought.
-
-    PARAMETERS
-
-    REFERENCE
-        Yevjevich, V. (1967). An objective approach to definitions
-        and investigations of continental hydrologic droughts.
-        Hydrology Papers 23, (23), 25–25. https://doi.org/10.1016
-        /0022-1694(69)90110-3
-    """
-    return(_pd.Series(
-        data={index: runs[index].sum() for index in runs.index},
-        name='length'
-        ))
 
 
 def get_runs(
@@ -220,56 +201,65 @@ def get_runs(
         pass
 
     if show_positives:
-        runs_output = _pd.Series(
+        return(_pd.Series(
             data=runs_pooled,
             name='anomaly'
-            )
-
-        onsets_output = _pd.Series(
-            data={
-                num: run.index[0]
-                for num, run in runs_pooled.iteritems()
-                },
-            name='onset_date'
-            )
-
-        ends_output = _pd.Series(
-            data={
-                num: run.index[-1]
-                for num, run in runs_pooled.iteritems()
-                },
-            name='end_date'
-            )
+            ))
 
     else:
-        runs_output = _pd.Series(
+        return(_pd.Series(
             data={
                 num: run
                 for num, run in runs_pooled.iteritems()
                 if run.sum() < 0
                 },
             name='anomaly'
-            )
+            ))
 
-        onsets_output = _pd.Series(
-            data={
-                num: run.index[0]
-                for num, run in runs_pooled.iteritems()
-                if run.sum() < 0
-                },
-            name='onset_date'
-            )
 
-        ends_output = _pd.Series(
-            data={
-                num: run.index[-1]
-                for num, run in runs_pooled.iteritems()
-                if run.sum() < 0
-                },
-            name='end_date'
-            )
+def runs_onset(runs):
+    """Extract the onset of each run.
 
-    return(runs_output, onsets_output, ends_output)
+    Parameters
+        runs: pandas.Series
+            The runs time series (as obtained with get_runs())
+    """
+    return(_pd.Series(
+        data={
+            num: run.index[0]
+            for num, run in runs.iteritems()
+            },
+        name='onset_date'
+        ))
+
+
+def runs_end(runs):
+    return(_pd.Series(
+        data={
+            num: run.index[-1]
+            for num, run in runs.iteritems()
+            },
+        name='end_date'
+        ))
+
+
+def runs_sum(runs):
+    """Computes the sum of all deviations between successive
+    downcrosses and upcrosses. Indicates the deficiency of water
+    in the variable analyzed or the severity of drought.
+
+    PARAMETERS
+
+    REFERENCE
+        Yevjevich, V. (1967). An objective approach to definitions
+        and investigations of continental hydrologic droughts.
+        Hydrology Papers 23, (23), 25–25. https://doi.org/10.1016
+        /0022-1694(69)90110-3
+    """
+    return(_pd.Series(
+        data={index: runs[index].sum() for index in runs.index},
+        name='length'
+        ))
 
 
 def runs_length(runs):

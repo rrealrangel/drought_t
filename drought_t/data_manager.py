@@ -142,87 +142,10 @@ def vector2array(input_path, resolution, nodata):
     return(output_band.ReadAsArray().astype(int))
 
 
-#def open_clim_ts(
-#        input_data_dir, output_var_name, resolution, input_mask_path, nodata,
-#        missthresh, flowstate
-#        ):
-#    """Reads a datacube (t, x, y) and generates a time series.
-#
-#    Parameters:
-#        input_data_dir : string
-#        input_mask_path : string
-#        resolution : float
-#        nodata : float
-#        missthresh : float
-#        output_var_name : string
-#        flowstate : string
-#
-#    Outputs:
-#    """
-#    data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc4'))
-#    data = data.rename(name_dict={'prec': output_var_name})
-#    mask = vector2array(
-#        input_path=input_mask_path,
-#        resolution=resolution,
-#        nodata=nodata
-#        )
-#    inregion_cells = (mask == 1).sum()
-#    min_cells = inregion_cells * missthresh
-#    basin_area = inregion_cells * (resolution**2 / 1e6)
-#
-#    if flowstate == 'flow':
-#        accum = (data[output_var_name] * resolution**2).sum(['east', 'north'])
-#        data_aggregated = accum / (basin_area * 1e6)
-#
-#    elif flowstate == 'state':
-#        data_aggregated = data[output_var_name].mean(['east', 'north'])
-#
-#    cells_per_date = data[output_var_name].notnull().sum(['east', 'north'])
-#
-#    time_series = _xr.where(
-#        cells_per_date < min_cells, _nan, data_aggregated
-#        ).to_series()
-#
-#    new_indices = _pd.date_range(
-#        start=sorted(time_series.index)[0],
-#        end=sorted(time_series.index)[-1],
-#        freq='1D'
-#        )
-#
-#    # TODO: clip data to the basin.
-#
-#    return(time_series.reindex(new_indices))
-
-
-#def open_chirps_ts(input_data_dir, output_var_name, resolution):
-#    data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
-#    data = data.rename(name_dict={'precip': output_var_name})
-#    data_accum_per_cell = data.copy().observed
-#    data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
-#
-#    basin_area = 0
-#    for lat in data_accum_per_cell.latitude:
-#        for lon in data_accum_per_cell.longitude:
-#            cell_area = degbox_2_area(
-#                lat=lat,
-#                lon=lon,
-#                resolution=resolution
-#                )
-#            data_accum_per_cell.loc[
-#                {'latitude': lat, 'longitude': lon}
-#                ].values[:] = (data.observed.loc[
-#                    {'latitude': lat, 'longitude': lon}
-#                    ] * cell_area)
-#            basin_area += cell_area
-#
-#    basin_precip = (data_accum_per_cell.sum(
-#        ['latitude', 'longitude']
-#        ) / basin_area).to_dataframe()['observed']
-##    basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
-#    return(basin_precip)
-
-
-def open_precip(source, input_data_dir, output_var_name, resolution, **kwargs):
+def open_precip(
+        source, input_data_dir, output_var_name, resolution, time_zone,
+        **kwargs
+        ):
     """Open the precipitation data source.
 
     This functions joints the functions open_clim_ts() and
@@ -287,7 +210,7 @@ def open_precip(source, input_data_dir, output_var_name, resolution, **kwargs):
             end=sorted(time_series.index)[-1],
             freq='1D'
             )
-        return(time_series.reindex(new_indices))
+        precip = time_series.reindex(new_indices)
 
     elif source == 'chirps':
         data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
@@ -310,14 +233,17 @@ def open_precip(source, input_data_dir, output_var_name, resolution, **kwargs):
                         ] * cell_area)
                 basin_area += cell_area
 
-        basin_precip = (data_accum_per_cell.sum(
+        precip = (data_accum_per_cell.sum(
             ['latitude', 'longitude']
             ) / basin_area).to_dataframe()['observed']
-        # basin_precip.index.freq = _pd.infer_freq(basin_precip.index)
-        return(basin_precip)
+        # precip.index.freq = _pd.infer_freq(precip.index)
+
+    precip.index = precip.index.tz_localize(time_zone)
+    precip.index = precip.index.tz_convert('UTC')
+    return(precip)
 
 
-def open_sflow_ts(input_file, input_mask_path, local_tz):
+def open_sflow_ts(input_file, input_mask_path, time_zone):
     # Open data source.
     data = _xr.open_dataset(input_file)
     data = data['disc_filled'].rename('observed').to_series()
@@ -325,7 +251,7 @@ def open_sflow_ts(input_file, input_mask_path, local_tz):
     # Add 8 hours to the timestamps (actual measuring time) and
     # convert them from local to UTC
     data.index = data.index + _pd.Timedelta(8, 'h')
-    data.index = data.index.tz_localize(local_tz)
+    data.index = data.index.tz_localize(time_zone)
     data.index = data.index.tz_convert('UTC')
 
     # Convert data units from m3 s-1 to mm day-1 m-2.

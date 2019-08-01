@@ -9,13 +9,15 @@
         input_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/precip_chirps2'
         input_data_res = 5000
         output_var_name = 'observed'
-        smoothing_scale = 7
+        smoothing_scale = 30
         smoothing_type = 'mean'
+        time_zone = 'UTC' 
 
     [vars.sflow]
         input_file = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/sflow/bandas_100_15014_qc.nc4'
-        smoothing_scale = 1
+        smoothing_scale = 30
         smoothing_type = 'mean'
+        time_zone = 'America/Mexico_City' 
 
 
 # Drought definition
@@ -24,9 +26,10 @@
     pooling_method = 'ma'
     ma_window = 10
     show_positives = false
+    large_runs = 0.1
 
 # Region
-[grid]
+[region]
     ###
     # Parameters
     #   xmin: float

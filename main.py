@@ -26,37 +26,21 @@ REFERENCES
 """
 import os
 
-import lib.data_analyst as dnlst
-import lib.data_manager as dmgr
-import lib.plot_time_series as plots
-import lib.threshold_level_method as tlm
+import drought_t.data_analyst as dnlst
+import drought_t.data_manager as dmgr
+import drought_t.plot_time_series as plots
+import drought_t.threshold_level_method as tlm
 
 config = dmgr.Configurations('drought_t.toml')
 
 if config.vars['precip']['input_dir'] is not False:
     # Retrieve the precipitation (precip) data.
-#    precip_raw = dmgr.open_clim_ts(
-#        input_dir=config.vars['precip']['input_dir'],
-#        basin_vmap_epsg4326=config.vars['basin_vmap_epsg4326'],
-#        basin_vmap_epsg6372=config.vars['basin_vmap_epsg6372'],
-#        resolution=config.grid['res'],
-#        nodata=config.grid['nodata'],
-#        missthresh=config.grid['missthresh'],
-#        output_varname='observed',
-#        flowstate='flow'
-#        )
-
-#    precip_raw = dmgr.open_chirps_ts(
-#        input_dir=config.vars['precip']['input_dir'],
-#        output_varname='observed',
-#        res=0.05
-#        )
-
     precip_raw = dmgr.open_precip(
         source=config.vars['precip']['source'],
         input_data_dir=config.vars['precip']['input_dir'],
         output_var_name=config.vars['precip']['output_var_name'],
         resolution=config.vars['precip']['input_data_res'],
+        time_zone=config.vars['precip']['time_zone']
         )
 
     # Aggregate the data.
@@ -70,97 +54,95 @@ if config.vars['sflow']['input_file'] is not False:
     # Retrieve the streamflow data.
     sflow_raw = dmgr.open_sflow_ts(
         input_file=config.vars['sflow']['input_file'],
-        basin_vmap=config.vars['basin_vmap_epsg6372'],
-#        resolution=config.grid['res'],
-        nodata=config.grid['nodata']
+        input_mask_path=config.vars['basin_vmap_epsg6372'],
+        time_zone=config.vars['sflow']['time_zone']
         )
 
     # Aggregate the data.
-    sflow = dnlst.scale_data(
+    sflow = dnlst.smooth_data(
         input_data=sflow_raw,
-        scale=config.vars['sflow']['agg_scale']
+        agg_type=config.vars['sflow']['smoothing_type'],
+        agg_scale=config.vars['sflow']['smoothing_scale']
         )
 
-
 # Precipitation deficit
-precip_anomaly_run, precip_anomaly_onset, precip_anomaly_end = tlm.get_runs(
+metdr = tlm.get_runs(
     data=precip,
     pooling_method=config.drought['pooling_method'],
     detrend=config.vars['detrend'],
-    ref_level=config.drought['ref_level'],
+    thresh=config.drought['ref_level'],
     show_positives=config.drought['show_positives'],
     window=config.drought['ma_window']
     )
 
-precip_anomaly_magnitude = tlm.runs_sum(runs=precip_anomaly_run)
+metdr_magnitude = tlm.runs_sum(runs=metdr)
 
-
-precip_anomaly_run_l = precip_anomaly_run[
-    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
+metdr_large = metdr[
+    metdr_magnitude <= metdr_magnitude.quantile(
+        q=config.drought['large_runs']
+        )
     ]
 
-precip_anomaly_peak = tlm.run_peak(
-    runs=precip_anomaly_run
+metdr_large_peak = tlm.run_peak(
+    runs=metdr_large
     )
 
-precip_anomaly_peak_l = tlm.run_peak(
-    runs=precip_anomaly_run_l
-    )
+metdr_large_onset = tlm.runs_onset(metdr_large)
 
-precip_anomaly_onset_l = precip_anomaly_onset[
-    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
+metdr_large_end = tlm.runs_end(metdr_large)
+
+metdr_large_magnitude = metdr_magnitude[
+    metdr_magnitude <= metdr_magnitude.quantile(
+        q=config.drought['large_runs']
+        )
     ]
 
-precip_anomaly_end_l = precip_anomaly_end[
-    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
-    ]
-
-precip_anomaly_magnitude_l = precip_anomaly_magnitude[
-    precip_anomaly_magnitude <= precip_anomaly_magnitude.quantile(q=0.1)
-    ]
-
-# Stream flow deficit
-sflow_anomaly_run, sflow_anomaly_onset, sflow_anomaly_end = tlm.get_runs(
+# Streamflow deficit
+hiddr = tlm.get_runs(
     data=sflow,
     pooling_method=config.drought['pooling_method'],
     detrend=config.vars['detrend'],
-    ref_level=config.drought['ref_level'],
+    thresh=config.drought['ref_level'],
     show_positives=config.drought['show_positives'],
     window=config.drought['ma_window']
     )
 
-sflow_anomaly_magnitude = tlm.runs_sum(runs=sflow_anomaly_run)
+hiddr_magnitude = tlm.runs_sum(runs=hiddr)
 
-sflow_anomaly_run_l = sflow_anomaly_run[
-    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
+hiddr_large = hiddr[
+    hiddr_magnitude <= hiddr_magnitude.quantile(
+        q=config.drought['large_runs']
+        )
     ]
 
-sflow_anomaly_peak = tlm.run_peak(
-    runs=sflow_anomaly_run
+hiddr_large_peak = tlm.run_peak(
+    runs=hiddr_large
     )
 
-sflow_anomaly_peak_l = tlm.run_peak(
-    runs=sflow_anomaly_run_l
-    )
+hiddr_large_onset = tlm.runs_onset(hiddr_large)
 
-sflow_anomaly_onset_l = sflow_anomaly_onset[
-    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
-    ]
+hiddr_large_end = tlm.runs_end(hiddr_large)
 
-sflow_anomaly_end_l = sflow_anomaly_end[
-    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
-    ]
-
-sflow_anomaly_magnitude_l = sflow_anomaly_magnitude[
-    sflow_anomaly_magnitude <= sflow_anomaly_magnitude.quantile(q=0.1)
+hiddr_large_magnitude = hiddr_magnitude[
+    hiddr_magnitude <= hiddr_magnitude.quantile(
+        q=config.drought['large_runs']
+        )
     ]
 
 if config.plot['plot_time_series']:
     if not os.path.isdir(config.plot['output_dir']):
         os.mkdir(config.plot['output_dir'])
 
-    series1_ref = tlm.reference_value(data=precip)
-    series2_ref = tlm.reference_value(data=sflow)
+    series1_ref = precip - tlm.anomaly(
+        data=precip,
+        detrend='linear',
+        thresh=0.5
+        )
+    series2_ref = sflow - tlm.anomaly(
+        data=sflow,
+        detrend='linear',
+        thresh=0.5
+        )
 
     first_year = max([
         i.index.min()
