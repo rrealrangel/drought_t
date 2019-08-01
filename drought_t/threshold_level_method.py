@@ -34,8 +34,8 @@ import sys as _sys
 import numpy as _np
 import pandas as _pd
 
-import drought_t.data_manager as dmgr
-import drought_t.data_analyst as dnlst
+import data_manager as dmgr
+import data_analyst as dnlst
 
 
 def anomaly(data, detrend='linear', thresh=0.5):
