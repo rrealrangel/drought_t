@@ -28,7 +28,6 @@ REFERENCES
         investigations of continental hydrologic droughts. Hydrology
         Papers 23, (23), 25–25. https://doi.org/10.1016/0022-
         1694(69)90110-3"""
-
 import sys as _sys
 
 import numpy as _np
@@ -40,19 +39,81 @@ import data_analyst as dnlst
 
 def anomaly(data, detrend='linear', thresh=0.5):
     """Compute the reference level.
-    """
-    output = data.copy()
 
-    for delta_days in range(366):
-        dates = _pd.date_range(
-            start=(data.index[0] + _pd.Timedelta(str(delta_days) + ' days')),
-            end=data.index[-1],
-            freq=_pd.DateOffset(years=1)
-            )
-        data_subset = data[dates]
+    Parameters
+        data: pandas.Series
+            The time series of the input data.
+
+    Reference
+        Durre, I., Squires, M. F., Vose, R. S., Applequist, S., & Yin,
+            X. (2011). Computational Procedures for the 1981-2010
+            Normals: Precipitation, Snowfall, and Snow Depth.
+    """
+    # Prepare the output pandas.Series.
+    reference = data.copy() * _np.nan
+
+    for date in _pd.date_range(start='1981-01-01', end='1981-12-31'):
+        data_window = _pd.Series()
+
+        # Extract the values in the corresponding date window.
+        for year in list(set(data.index.year - 1)):
+            window_first = date - _pd.Timedelta(14, 'D') - 1
+            window_first = _pd.datetime(
+                year=year,
+                month=window_first.month,
+                day=window_first.day
+                )
+            window_last = window_first + _pd.Timedelta(29, 'D')
+            data_window = data_window.append(
+                to_append=data[
+                    (data.index >= window_first) &
+                    (data.index <= window_last)
+                    ]
+                )
+
+        # Remove values in every February 29.
+        data_window[
+            (data_window.index.month == 2) &
+            (data_window.index.day == 29)
+            ] = _np.nan
+
+        # Remove all years with fewer than 20 values.
+        data_subset = data_window.groupby(
+            by=data_window.index.year
+            ).filter(lambda x: x.count() > 20)
 
         if dnlst.trend_is_significant(x=data_subset) and detrend == 'linear':
             data_subset = dnlst.detrend_lineal(data_subset)
+
+        # Remove zero-values.
+        data_subset_nonzero = data_subset[data_subset > 0]
+
+        # Compute the reference value only if, at least, 10 % of the
+        # chosen values are nonzero.
+        if len(data_subset_nonzero) / float(len(data_subset)) > 0.1:
+            reference[
+                (reference.index.month == date.month) &
+                (reference.index.day == date.day)
+                ] = data_subset_nonzero.median()
+
+    # Smooth the resulting reference values.
+    reference_smoothed = reference.rolling(
+        window=29,
+        center=True,
+        min_periods=15
+        ).mean()
+
+
+#    delta_days in range(366):
+#        dates = _pd.date_range(
+#            start=(data.index[0] + _pd.Timedelta(str(delta_days) + ' days')),
+#            end=data.index[-1],
+#            freq=_pd.DateOffset(years=1)
+#            )
+#        data_subset = data[dates]
+
+#        if dnlst.trend_is_significant(x=data_subset) and detrend == 'linear':
+#            data_subset = dnlst.detrend_lineal(data_subset)
 
         if thresh == 'mean':
             reference_level = float(data_subset.mean())
