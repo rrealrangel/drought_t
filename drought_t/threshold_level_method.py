@@ -23,7 +23,7 @@ import pandas as _pd
 import data_manager as dmgr
 
 
-def base_value(x, window=29, min_notnull=20, min_nonzero=0.1):
+def reference_value(x, window=29, min_notnull=20, min_nonzero=0.1):
     """
     Compute the base value (x0) that will cut the sequence x into runs.
     The base value (x0) cuts the series of interest in many places and
@@ -270,7 +270,7 @@ def pool_runs(runs, pooling_method=None, show_positives=False, **kwargs):
             center=True,
             min_periods=ma_window
             ).mean()
-        ma_x0 = base_value(
+        ma_x0 = reference_value(
             x=ma_x,
             window=bv_window,
             min_notnull=bv_min_notnoull,
