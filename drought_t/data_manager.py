@@ -240,6 +240,7 @@ def open_precip(
 
     precip.index = precip.index.tz_localize(time_zone)
     precip.index = precip.index.tz_convert('UTC')
+    precip.index = precip.index.tz_localize(None)
     return(precip)
 
 
@@ -253,6 +254,7 @@ def open_sflow_ts(input_file, input_mask_path, time_zone):
     data.index = data.index + _pd.Timedelta(8, 'h')
     data.index = data.index.tz_localize(time_zone)
     data.index = data.index.tz_convert('UTC')
+    data.index = data.index.tz_localize(None)
 
     # Convert data units from m3 s-1 to mm day-1 m-2.
     basin_area = vmap_area(input_path=input_mask_path)
