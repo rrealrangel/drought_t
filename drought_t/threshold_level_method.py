@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """THRESHOLD LEVEL METHOD FOR DEFINING DROUGHT EVENTS
 
@@ -15,15 +15,15 @@ AUTHOR
 LICENSE
     GNU General Public License
 """
-import sys as _sys
-
 import numpy as _np
 import pandas as _pd
 
 import data_manager as dmgr
 
 
-def reference_value(x, window=29, min_notnull=20, min_nonzero=0.1):
+def reference_value(
+        x, window=29, min_val=0.25, min_notnull=20, min_nonzero=0.1
+        ):
     """
     Compute the base value (x0) that will cut the sequence x into runs.
     The base value (x0) cuts the series of interest in many places and
@@ -58,6 +58,10 @@ def reference_value(x, window=29, min_notnull=20, min_nonzero=0.1):
         Size of the window centered on each day of the year used to
         choose the values from which the median will be computed. By
         default, 29.
+    min_val : float, optional
+        Minimum value to be considered as a nonzero value. If set to a
+        negative value (for example, -1), zero values are included in
+        the computation of the median. By default, 0.25.
     min_notnull : int, optional
         Minumum number of values available within the applicable window
         in a given year to be included in the analysis. It cannot be
@@ -89,7 +93,7 @@ def reference_value(x, window=29, min_notnull=20, min_nonzero=0.1):
 
         # Extract the values in the corresponding date window.
         for year in list(set(x.index.year - 1)):
-            window_first = date - _pd.Timedelta(window / 2, 'D') - 1
+            window_first = date - _pd.Timedelta(window / 2, 'D')
             window_first = _pd.datetime(
                 year=year,
                 month=window_first.month,
@@ -115,7 +119,7 @@ def reference_value(x, window=29, min_notnull=20, min_nonzero=0.1):
             ).filter(lambda group: group.count() > min_notnull)
 
         # Remove zero-values.
-        data_subset_nonzero = data_subset[data_subset > 0]
+        data_subset_nonzero = data_subset[data_subset > min_val]
 
         # Compute the x0 only if, at least, min_nonzero of the chosen
         # values are nonzero.
@@ -192,18 +196,7 @@ def _sign_wo_zero(value):
 
 
 def _sign_grouper(anomalies):
-    """
-    References:
-    Tallaksen, L. M., Madsen, H., & Clausen, B. (1997). On the
-        definition and modelling of streamflow drought duration
-        and deficit volume. Hydrological Sciences Journal,
-        42(1), 15–33. https://doi.org/10.1080/
-        02626669709492003.
-    Tallaksen, L. M., & van Lanen, H. A. J. (Eds.). (2004).
-        Hydrological Drought: Processes and Estimation Methods
-        for Streamflow and Groundwater. Elsevier Inc. Retrieved
-        from http://europeandroughtcentre.com/resources/
-        hydrological-drought-1st-edition/
+    """Groups the values of a series according to their sign.
 
     Parameters
     ----------
@@ -356,7 +349,7 @@ def pool_runs(runs, pooling_method=None, show_positives=False, **kwargs):
 
 
 def runs_onset(runs):
-    """Extract the onset of each run.
+    """Extract the date of onset of each run.
 
     Parameters
     ----------
@@ -377,6 +370,17 @@ def runs_onset(runs):
 
 
 def runs_end(runs):
+    """Extract the date of termination of each run.
+
+    Parameters
+    ----------
+    runs : pandas.Series
+        The runs time series (as obtained with get_runs())
+
+    Output
+    ------
+    pandas.Series
+    """
     return(_pd.Series(
         data={
             num: run.index[-1]
