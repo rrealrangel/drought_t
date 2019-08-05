@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
      name='drought_t',
-     version='6.0.0',
+     version='0.3.1.1',
      description='Drought temporal analysis.',
      url='https://github.com/rrealrangel/drought_t',
      author='R. A. Real-Rangel',
