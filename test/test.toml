@@ -1,12 +1,12 @@
 # General
 [vars]
     detrend = 'linear'
-    basin_vmap_epsg4326 = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
-    basin_vmap_epsg6372 = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/basin/basin.shp'
+    basin_vmap_epsg4326 = 'C:/Users/rreal/Mega/projects/multiannual/doctorado/data/15014/basin/basin.shp'
+    basin_vmap_epsg6372 = 'C:/Users/rreal/Mega/projects/multiannual/doctorado/data/15014/basin/basin.shp'
 
     [vars.precip]
         source = 'chirps'
-        input_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/precip_chirps2'
+        input_dir = 'C:/Users/rreal/Mega/projects/multiannual/doctorado/data/15014/precip_chirps2'
         input_data_res = 5000
         output_var_name = 'observed'
         smoothing_scale = 30
@@ -14,7 +14,7 @@
         time_zone = 'UTC' 
 
     [vars.sflow]
-        input_file = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/01_data/15014/sflow/bandas_100_15014_qc.nc4'
+        input_file = 'C:/Users/rreal/Mega/projects/multiannual/doctorado/data/15014/sflow/bandas_100_15014_qc.nc4'
         smoothing_scale = 30
         smoothing_type = 'mean'
         time_zone = 'America/Mexico_City' 
@@ -51,6 +51,6 @@
 
 [plot]
     plot_time_series = true
-    output_dir = 'C:/Users/rreal/Mega/projects/multiannual/04-doctorado/analysis/02_drought_analysis/15014/plots'
+    output_dir = 'C:/Users/rreal/Mega/projects/multiannual/doctorado/analysis/drt_characterization/15014/plots'
     plot_start = '04-01'
     plot_end = '03-31'
