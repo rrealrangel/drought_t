@@ -15,8 +15,8 @@ AUTHOR
 LICENSE
     GNU General Public License
 """
-import numpy as _np
-import pandas as _pd
+import numpy as np
+import pandas as pd
 
 import data_manager as dmgr
 
@@ -78,23 +78,23 @@ def reference_value(
         the input x.
     """
     # Prepare the output pandas.Series.
-    x0 = x.copy() * _np.nan
+    x0 = x.copy() * np.nan
 
-    for date in _pd.date_range(start='1981-01-01', end='1981-12-31'):
-        data_window = _pd.Series()
+    for date in pd.date_range(start='1981-01-01', end='1981-12-31'):
+        data_window = pd.Series()
 
         # Extract the values in the corresponding date window.
         for year in list(set(x.index.year - 1)):
-            window_first = date - _pd.Timedelta(
+            window_first = date - pd.Timedelta(
                 value=window / 2,
                 unit='D'
                 )
-            window_first = _pd.datetime(
+            window_first = pd.datetime(
                 year=year,
                 month=window_first.month,
                 day=window_first.day
                 )
-            window_last = window_first + _pd.Timedelta(
+            window_last = window_first + pd.Timedelta(
                 value=window,
                 unit='D'
                 )
@@ -109,7 +109,7 @@ def reference_value(
         data_window[
             (data_window.index.month == 2) &
             (data_window.index.day == 29)
-            ] = _np.nan
+            ] = np.nan
 
         # Remove years with fewer than min_notnull values.
         data_subset = data_window.groupby(
@@ -129,7 +129,7 @@ def reference_value(
 
     # Set February 29 values as the mean of their corresponding
     # February 28 and March 1.
-    x0[(x0.index.month == 2) & (x0.index.day == 29)] = _np.mean([
+    x0[(x0.index.month == 2) & (x0.index.day == 29)] = np.mean([
         x0['1981-02-28'], x0['1981-03-01']
         ])
 
@@ -188,7 +188,7 @@ def smooth_variable(
     def smoothfunc(x_subset, min_notnull, min_val, min_nonzero):
         # Remove groups with fewer than min_notnull values.
         if x_subset.notnull().sum() < (min_notnull * len(x_subset)):
-            return(_np.nan)
+            return(np.nan)
 
         else:
             # Remove zero-values.
@@ -200,7 +200,7 @@ def smooth_variable(
                 return(x_subset_nonzero.median())
 
             else:
-                return(_np.nan)
+                return(np.nan)
 
     x_smooth = x.rolling(
         window=window,
@@ -234,11 +234,11 @@ def _sign_wo_zero(value):
         The sign of the input value. -1, if value is negative or zero;
         and 1, is value is positive.
     """
-    if _np.sign(value) == 0:
+    if np.sign(value) == 0:
         return(1)
 
     else:
-        return(_np.sign(value))
+        return(np.sign(value))
 
 
 def _sign_grouper(anomalies):
@@ -253,10 +253,10 @@ def _sign_grouper(anomalies):
     ------
     pandas.SeriesGroupBy
     """
-    sign = _np.sign(anomalies)
+    sign = np.sign(anomalies)
     sign[sign == 0] = 1
     runs = (sign != sign.shift(1)).astype(int).cumsum()
-    runs[anomalies.isnull()] = _np.nan
+    runs[anomalies.isnull()] = np.nan
     runs = runs - (runs.min() - 1)
     return(anomalies.groupby(runs))
 
@@ -279,17 +279,29 @@ def get_runs(anomalies):
         })
 
 
-def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
+def pool_runs(x, x0, pooling_method='None', **kwargs):
     """
     Parameters
     ----------
-    runs : dict
+    x : pandas.Series
+        Time series of the variable analyzed.
+    x0 : pandas.Series
+        Time series of the threshold level for the variable x.
     pooling_method : str, optional
-    show_positives : bool, optional
+        Pooling method to apply. For not applying any pooling, enter
+        'none' (default). The other options are: the moving average
+        method ('ma'), and the inter-event time and volume criterion
+        method ('ic').
+    kwargs : keyword arguments
+        window: the size of the moving average window (in days).
+        Only used if pooling_method == 'ma'.
+        tc: the inter-event critic duration (in days). Only used if
+        pooling_method == 'ic'.
+        pc: the critical ratio. Only used if pooling_method == 'ic'.
 
     Output
     ------
-        pandas.Series
+        numpy.array
     """
     runs = get_runs(anomalies=(x - x0))
 
@@ -304,11 +316,11 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
 # Pooling runs through the moving average (MA) method.
 # =============================================================================
     elif pooling_method == 'ma':
-        ma_window = kwargs['ma_window']
+        window = kwargs['window']
         x_ma = x.rolling(
-            window=ma_window,
+            window=window,
             center=True,
-            min_periods=ma_window
+            min_periods=window
             ).mean()
         anomalies_ma = x_ma - x0
 
@@ -347,17 +359,17 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
                         (i.index[0] <= runs_same_sign_to_pool[-1].index[-1]))
                     ]
 
-                pooled = _pd.concat(objs=runs_to_pool)
+                pooled = pd.concat(objs=runs_to_pool)
 
                 if counter == 1:
-                    runs_pooled[counter] = _pd.concat(
+                    runs_pooled[counter] = pd.concat(
                         objs=runs_to_pool
                         )
 
                     counter += 1
 
                 elif pooled.index[0] != runs_pooled[counter - 1].index[0]:
-                    runs_pooled[counter] = _pd.concat(
+                    runs_pooled[counter] = pd.concat(
                         objs=runs_to_pool
                         )
 
@@ -374,21 +386,21 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
         runs_pooled_tagged = {}
 
         for k, run in runs_pooled.items():
-            if _np.sign(run.sum()) == -1:
+            if np.sign(run.sum()) == -1:
                 peak_day = run.index[run == run.min()]
 
             else:
                 peak_day = run.index[run == run.max()]
 
             if len(peak_day) > 1:
-                peak_day = peak_day[int(_np.ceil((len(peak_day) / 2.) - 1))]
+                peak_day = peak_day[int(np.ceil((len(peak_day) / 2.) - 1))]
 
             else:
                 peak_day = peak_day[0]
 
             runs_pooled_tagged[peak_day] = runs_pooled[k]
 
-        runs_concat = _pd.concat(objs=[v for v in runs_pooled.values()])
+        runs_concat = pd.concat(objs=[v for v in runs_pooled.values()])
         runs_to_add = [
             run
             for run in runs.values()
@@ -396,14 +408,14 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
             ]
 
         for run in runs_to_add:
-            if _np.sign(run.sum()) == -1:
+            if np.sign(run.sum()) == -1:
                 peak_day = run.index[run == run.min()]
 
             else:
                 peak_day = run.index[run == run.max()]
 
             if len(peak_day) > 1:
-                peak_day = peak_day[int(_np.ceil((len(peak_day) / 2.) - 1))]
+                peak_day = peak_day[int(np.ceil((len(peak_day) / 2.) - 1))]
 
             else:
                 peak_day = peak_day[0]
@@ -422,8 +434,8 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
 # Pooling runs through the inter-event time and volume criterion (IC) method.
 # =============================================================================
     elif pooling_method == 'ic':
-        tc = kwargs['ic_critical_duration']
-        pc = kwargs['ic_critical_ratio']
+        tc = kwargs['tc']
+        pc = kwargs['pc']
         runs_pooled = {}
         counter = 1
         starting_date = runs[runs.keys()[0]].index[0]
@@ -436,8 +448,8 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
         while len(run_aux) == 1:
             run_pooled = run_aux[0]
 
-            if _np.sign(run_pooled.sum()) == -1:
-                intr_run_start = run_pooled.index[-1] + _pd.Timedelta(
+            if np.sign(run_pooled.sum()) == -1:
+                intr_run_start = run_pooled.index[-1] + pd.Timedelta(
                     value=1,
                     unit='D'
                     )
@@ -458,7 +470,7 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
                            (ti <= tc) &
                            (abs(vi / si) <= pc)):
                         run_to_pool_start = (
-                            intr_run.index[-1] + _pd.Timedelta(
+                            intr_run.index[-1] + pd.Timedelta(
                                 value=1,
                                 unit='D'
                                 )
@@ -471,12 +483,12 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
 
                         if len(run_to_pool_aux) == 1:
                             run_to_pool = run_to_pool_aux[0]
-                            run_pooled = _pd.concat(
+                            run_pooled = pd.concat(
                                 [run_pooled, intr_run, run_to_pool]
                                 )
                             intr_run_start = (
                                 run_pooled.index[-1] +
-                                _pd.Timedelta(
+                                pd.Timedelta(
                                     value=1,
                                     unit='D'
                                     )
@@ -493,7 +505,7 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
                                 vi = intr_run.sum()
                                 si = run_pooled.sum()
 
-                    starting_date = run_pooled.index[-1] + _pd.Timedelta(
+                    starting_date = run_pooled.index[-1] + pd.Timedelta(
                         value=1,
                         unit='D'
                         )
@@ -510,7 +522,7 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
 
                 if len(peak_day) > 1:
                     peak_day = peak_day[
-                        int(_np.ceil((len(peak_day) / 2.) - 1))
+                        int(np.ceil((len(peak_day) / 2.) - 1))
                         ]
 
                 else:
@@ -519,7 +531,7 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
                 runs_pooled[peak_day] = run_pooled
 
             else:
-                starting_date = run_pooled.index[-1] + _pd.Timedelta(
+                starting_date = run_pooled.index[-1] + pd.Timedelta(
                     value=1,
                     unit='D'
                     )
@@ -529,15 +541,7 @@ def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
                     if i.index[0] == starting_date
                     ]
 
-    if show_positives:
-        return(runs_pooled)
-
-    else:
-        return({
-            num: run
-            for num, run in runs_pooled.items()
-            if run.sum() < 0
-            })
+    return({num: run for num, run in runs_pooled.items() if run.sum() < 0})
 
 
 def runs_onset(runs):
@@ -552,7 +556,7 @@ def runs_onset(runs):
     ------
     pandas.Series
     """
-    return(_pd.Series(
+    return(pd.Series(
         data={
             num: run.index[0]
             for num, run in runs.items()
@@ -573,7 +577,7 @@ def runs_end(runs):
     ------
     pandas.Series
     """
-    return(_pd.Series(
+    return(pd.Series(
         data={
             num: run.index[-1]
             for num, run in runs.items()
@@ -603,7 +607,7 @@ def runs_sum(runs):
     ------
     pandas.Series
     """
-    return(_pd.Series(
+    return(pd.Series(
         data={k: v.sum() for k, v in runs.items()},
         name='length'
         ))
@@ -629,7 +633,7 @@ def runs_length(runs):
     ------
     pandas.Series
     """
-    return(_pd.Series(
+    return(pd.Series(
         data={k: len(v) for k, v in runs.items()},
         name='length'
         ))
@@ -662,7 +666,7 @@ def run_peak(runs):
     ------
     pandas.Series
     """
-    return(_pd.Series(
+    return(pd.Series(
         data={k: v.min() for k, v in runs.items()},
         name='peak'
         ))
@@ -680,5 +684,5 @@ def runs_cumsum(runs):
     pandas.Series
     """
     return(_sign_grouper(
-        _pd.concat(objs=[v for k, v in runs.items()])
+        pd.concat(objs=[v for k, v in runs.items()])
         ).cumsum())
