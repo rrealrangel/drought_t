@@ -22,7 +22,8 @@ import data_manager as dmgr
 
 
 def reference_value(
-        x, window=29, min_val=0.25, min_notnull=20, min_nonzero=0.1
+        x, window=29, min_val=0.25, min_notnull=0.667, min_nonzero=0.1,
+        double_smoothing=True
         ):
     """
     Compute the base value (x0) that will cut the sequence x into runs.
@@ -63,9 +64,9 @@ def reference_value(
         negative value (for example, -1), zero values are included in
         the computation of the median. By default, 0.25.
     min_notnull : int, optional
-        Minumum number of values available within the applicable window
+        Minumum fraction of values available within the applicable window
         in a given year to be included in the analysis. It cannot be
-        greater than window. By default, 20.
+        greater than window. By default, 0.667.
     min_nonzero : float, optional
         Minimum ratio of nonzero values of the chosen values to perform
         the computation of the median.
@@ -75,16 +76,7 @@ def reference_value(
     pandas.Series
         The time series of the base value (x0) with the same length as
         the input x.
-
-    Raises
-    ------
-    ValueError
-        When min_notnull is greater than window.
     """
-    # Check if min_notnull is lower than window.
-    if min_notnull > window:
-        raise(ValueError("min_notnull value is greater than window."))
-
     # Prepare the output pandas.Series.
     x0 = x.copy() * _np.nan
 
@@ -93,13 +85,19 @@ def reference_value(
 
         # Extract the values in the corresponding date window.
         for year in list(set(x.index.year - 1)):
-            window_first = date - _pd.Timedelta(window / 2, 'D')
+            window_first = date - _pd.Timedelta(
+                value=window / 2,
+                unit='D'
+                )
             window_first = _pd.datetime(
                 year=year,
                 month=window_first.month,
                 day=window_first.day
                 )
-            window_last = window_first + _pd.Timedelta(window, 'D')
+            window_last = window_first + _pd.Timedelta(
+                value=window,
+                unit='D'
+                )
             data_window = data_window.append(
                 to_append=x[
                     (x.index >= window_first) &
@@ -116,7 +114,7 @@ def reference_value(
         # Remove years with fewer than min_notnull values.
         data_subset = data_window.groupby(
             by=data_window.index.year
-            ).filter(lambda group: group.count() > min_notnull)
+            ).filter(lambda group: group.count() > (min_notnull * window))
 
         # Remove zero-values.
         data_subset_nonzero = data_subset[data_subset > min_val]
@@ -135,41 +133,89 @@ def reference_value(
         x0['1981-02-28'], x0['1981-03-01']
         ])
 
-    # Smooth the resulting x0.
-    x0 = x0.rolling(
-        window=window,
-        center=True,
-        min_periods=(window / 2)
-        ).mean()
+    if double_smoothing:
+        # Smooth the resulting x0.
+        x0 = x0.rolling(
+            window=window,
+            center=True,
+            min_periods=(window / 2)
+            ).mean()
 
     return(x0)
 
 
-def anomaly(x, x0, window=29):
+def smooth_variable(
+        x, window=29, min_val=0.25, min_notnull=0.667, min_nonzero=0.1,
+        double_smoothing=True
+        ):
     """
-    Compute the anomalies in a series x relative to a base value x0.
+    Computes a moving average to the raw records of a variable (e. g.,
+    precipitation, streamflow, etc.) to make comparable to the
+    reference level computed with reference_value().
+
+    References:
+    Durre, I., Squires, M. F., Vose, R. S., Applequist, S., & Yin,
+        X. (2011). Computational Procedures for the 1981-2010
+        Normals: Precipitation, Snowfall, and Snow Depth.
 
     Parameters
     ----------
     x : pandas.Series
-        Time series of the input data.
-    x0 : pandas.Series
-        Time series of the base value (x0).
-    window : integer, optional
+        The time series of the input data.
+    window : int, optional
         Size of the window centered on each day of the year used to
-        aggregate the input x values and to choose the values from
-        which the median will be computed. By default, 29.
+        choose the values from which the median will be computed. By
+        default, 29.
+    min_val : float, optional
+        Minimum value to be considered as a nonzero value. If set to a
+        negative value (for example, -1), zero values are included in
+        the computation of the median. By default, 0.25.
+    min_notnull : int, optional
+        Minumum fraction of values available within the applicable window
+        in a given year to be included in the analysis. It cannot be
+        greater than window. By default, 0.667.
+    min_nonzero : float, optional
+        Minimum ratio of nonzero values of the chosen values to perform
+        the computation of the median.
 
-    Output
-    ------
+    Returns
+    -------
     pandas.Series
+        The time series of the variable of interest (x) with the same
+        length as the input x.
     """
-    x_aggregated = x.rolling(
+    # Define the function to apply to the rolling window.
+    def smoothfunc(x_subset, min_notnull, min_val, min_nonzero):
+        # Remove groups with fewer than min_notnull values.
+        if x_subset.notnull().sum() < (min_notnull * len(x_subset)):
+            return(_np.nan)
+
+        else:
+            # Remove zero-values.
+            x_subset_nonzero = x_subset[x_subset > min_val]
+
+            # Compute the x_smooth only if, at least, min_nonzero of the chosen
+            # values are nonzero.
+            if len(x_subset_nonzero) / float(len(x_subset)) > min_nonzero:
+                return(x_subset_nonzero.median())
+
+            else:
+                return(_np.nan)
+
+    x_smooth = x.rolling(
         window=window,
         center=True,
         min_periods=(window / 2)
-        ).mean()
-    return(x_aggregated - x0)
+        ).apply(
+            smoothfunc,
+            kwargs={
+                'min_notnull': min_notnull,
+                'min_val': min_val,
+                'min_nonzero': min_nonzero
+                },
+            raw=False
+            )
+    return(x_smooth)
 
 
 def _sign_wo_zero(value):
@@ -233,7 +279,7 @@ def get_runs(anomalies):
         })
 
 
-def pool_runs(runs, pooling_method=None, show_positives=False, **kwargs):
+def pool_runs(x, x0, pooling_method=None, show_positives=False, **kwargs):
     """
     Parameters
     ----------
@@ -245,46 +291,41 @@ def pool_runs(runs, pooling_method=None, show_positives=False, **kwargs):
     ------
         pandas.Series
     """
-    if pooling_method is None:
+    runs = get_runs(anomalies=(x - x0))
+
+# =============================================================================
+# Do not pool events.
+# =============================================================================
+    if pooling_method == 'None':
         # Not pooling runs.
         runs_pooled = runs
 
+# =============================================================================
+# Pooling runs through the moving average (MA) method.
+# =============================================================================
     elif pooling_method == 'ma':
-        # Pooling runs through the moving average method.
-        x = kwargs['x']
         ma_window = kwargs['ma_window']
-        bv_window = kwargs['bv_window']
-        bv_min_notnoull = kwargs['bv_min_notnoull']
-        bv_min_nonzero = kwargs['bv_min_nonzero']
-
-        # Compute runs for the transformed input data.
-        ma_x = x.rolling(
+        x_ma = x.rolling(
             window=ma_window,
             center=True,
             min_periods=ma_window
             ).mean()
-        ma_x0 = reference_value(
-            x=ma_x,
-            window=bv_window,
-            min_notnull=bv_min_notnoull,
-            min_nonzero=bv_min_nonzero
-            )
-        ma_anomalies = anomaly(
-            x=ma_x,
-            x0=ma_x0,
-            window=bv_window
-            )
-        ma_runs = get_runs(ma_anomalies)
+        anomalies_ma = x_ma - x0
+
+        # Compute runs for the transformed input data.
+        runs_ma = get_runs(anomalies=anomalies_ma)
         runs_pooled = {}
         counter = 1
         counter2 = 0
 
-        for ma_num, ma_run in ma_runs.items():
+        for i_ma in sorted(runs_ma.keys()):
+            run_ma = runs_ma[i_ma]
             candidates_to_pool = []
 
-            for num, run in runs.items():
-                if run.index[0] <= ma_run.index[-1]:
-                    for date in ma_run.index:
+            for i in sorted(runs.keys()):
+                run = runs[i]
+                if run.index[0] <= run_ma.index[-1]:
+                    for date in run_ma.index:
                         if date in run.index:
                             candidates_to_pool.append(run)
                             break
@@ -292,13 +333,20 @@ def pool_runs(runs, pooling_method=None, show_positives=False, **kwargs):
                     else:
                         pass
 
-            runs_to_pool = [
-                run
-                for run in candidates_to_pool
-                if _sign_wo_zero(run.sum()) == _sign_wo_zero(ma_run.sum())
+            runs_same_sign_to_pool = [
+                i
+                for i in candidates_to_pool
+                if _sign_wo_zero(i.sum()) == _sign_wo_zero(run_ma.sum())
                 ]
 
-            if len(runs_to_pool) > 0:
+            if len(runs_same_sign_to_pool) > 0:
+                runs_to_pool = [
+                    i
+                    for i in runs.values()
+                    if ((i.index[0] >= runs_same_sign_to_pool[0].index[0]) &
+                        (i.index[0] <= runs_same_sign_to_pool[-1].index[-1]))
+                    ]
+
                 pooled = _pd.concat(objs=runs_to_pool)
 
                 if counter == 1:
@@ -318,34 +366,178 @@ def pool_runs(runs, pooling_method=None, show_positives=False, **kwargs):
             counter2 += 1
             dmgr.progress_message(
                 current=(counter2),
-                total=len(ma_runs),
+                total=len(runs_ma),
                 message="- Pooling runs",
                 units='runs'
                 )
 
+        runs_pooled_tagged = {}
+
+        for k, run in runs_pooled.items():
+            if _np.sign(run.sum()) == -1:
+                peak_day = run.index[run == run.min()]
+
+            else:
+                peak_day = run.index[run == run.max()]
+
+            if len(peak_day) > 1:
+                peak_day = peak_day[int(_np.ceil((len(peak_day) / 2.) - 1))]
+
+            else:
+                peak_day = peak_day[0]
+
+            runs_pooled_tagged[peak_day] = runs_pooled[k]
+
+        runs_concat = _pd.concat(objs=[v for v in runs_pooled.values()])
+        runs_to_add = [
+            run
+            for run in runs.values()
+            if run.index[0] not in runs_concat.index
+            ]
+
+        for run in runs_to_add:
+            if _np.sign(run.sum()) == -1:
+                peak_day = run.index[run == run.min()]
+
+            else:
+                peak_day = run.index[run == run.max()]
+
+            if len(peak_day) > 1:
+                peak_day = peak_day[int(_np.ceil((len(peak_day) / 2.) - 1))]
+
+            else:
+                peak_day = peak_day[0]
+
+            runs_pooled_tagged[peak_day] = run
+
+        runs_pooled = runs_pooled_tagged
+
+# =============================================================================
+# Pooling runs through the sequent peak algorithm (SPA) method.
+# =============================================================================
     elif pooling_method == 'sp':
-        # Sequent peak algorithm method.
         pass
 
+# =============================================================================
+# Pooling runs through the inter-event time and volume criterion (IC) method.
+# =============================================================================
     elif pooling_method == 'ic':
-        # Inter-event time and volume criterion method.
-        pass
+        tc = kwargs['ic_critical_duration']
+        pc = kwargs['ic_critical_ratio']
+        runs_pooled = {}
+        counter = 1
+        starting_date = runs[runs.keys()[0]].index[0]
+        run_aux = [
+            i
+            for i in runs.values()
+            if i.index[0] == starting_date
+            ]
+
+        while len(run_aux) == 1:
+            run_pooled = run_aux[0]
+
+            if _np.sign(run_pooled.sum()) == -1:
+                intr_run_start = run_pooled.index[-1] + _pd.Timedelta(
+                    value=1,
+                    unit='D'
+                    )
+                intr_run_aux = [
+                    i
+                    for i in runs.values()
+                    if i.index[0] == intr_run_start
+                    ]
+
+                if len(intr_run_aux) == 1:
+                    intr_run = intr_run_aux[0]
+                    ti = intr_run.count()
+                    vi = intr_run.sum()
+                    si = run_pooled.sum()
+
+                    # Test the pooling conditioning factors and pool the runs.
+                    while ((len(intr_run_aux) == 1) &
+                           (ti <= tc) &
+                           (abs(vi / si) <= pc)):
+                        run_to_pool_start = (
+                            intr_run.index[-1] + _pd.Timedelta(
+                                value=1,
+                                unit='D'
+                                )
+                            )
+                        run_to_pool_aux = [
+                            i
+                            for i in runs.values()
+                            if i.index[0] == run_to_pool_start
+                            ]
+
+                        if len(run_to_pool_aux) == 1:
+                            run_to_pool = run_to_pool_aux[0]
+                            run_pooled = _pd.concat(
+                                [run_pooled, intr_run, run_to_pool]
+                                )
+                            intr_run_start = (
+                                run_pooled.index[-1] +
+                                _pd.Timedelta(
+                                    value=1,
+                                    unit='D'
+                                    )
+                                )
+                            intr_run_aux = [
+                                i
+                                for i in runs.values()
+                                if i.index[0] == intr_run_start
+                                ]
+
+                            if len(intr_run_aux) == 1:
+                                intr_run = intr_run_aux[0]
+                                ti = intr_run.count()
+                                vi = intr_run.sum()
+                                si = run_pooled.sum()
+
+                    starting_date = run_pooled.index[-1] + _pd.Timedelta(
+                        value=1,
+                        unit='D'
+                        )
+                    run_aux = [
+                        i
+                        for i in runs.values()
+                        if i.index[0] == starting_date
+                        ]
+
+                else:
+                    run_aux = []
+
+                peak_day = run_pooled.index[run_pooled == run_pooled.min()]
+
+                if len(peak_day) > 1:
+                    peak_day = peak_day[
+                        int(_np.ceil((len(peak_day) / 2.) - 1))
+                        ]
+
+                else:
+                    peak_day = peak_day[0]
+
+                runs_pooled[peak_day] = run_pooled
+
+            else:
+                starting_date = run_pooled.index[-1] + _pd.Timedelta(
+                    value=1,
+                    unit='D'
+                    )
+                run_aux = [
+                    i
+                    for i in runs.values()
+                    if i.index[0] == starting_date
+                    ]
 
     if show_positives:
-        return(_pd.Series(
-            data=runs_pooled,
-            name='anomaly'
-            ))
+        return(runs_pooled)
 
     else:
-        return(_pd.Series(
-            data={
-                num: run
-                for num, run in runs_pooled.items()
-                if run.sum() < 0
-                },
-            name='anomaly'
-            ))
+        return({
+            num: run
+            for num, run in runs_pooled.items()
+            if run.sum() < 0
+            })
 
 
 def runs_onset(runs):
@@ -412,7 +604,7 @@ def runs_sum(runs):
     pandas.Series
     """
     return(_pd.Series(
-        data={index: runs[index].sum() for index in runs.index},
+        data={k: v.sum() for k, v in runs.items()},
         name='length'
         ))
 
@@ -438,7 +630,7 @@ def runs_length(runs):
     pandas.Series
     """
     return(_pd.Series(
-        data={index: runs[index].count() for index in runs.index},
+        data={k: len(v) for k, v in runs.items()},
         name='length'
         ))
 
@@ -471,7 +663,7 @@ def run_peak(runs):
     pandas.Series
     """
     return(_pd.Series(
-        data={index: runs[index].min() for index in runs.index},
+        data={k: v.min() for k, v in runs.items()},
         name='peak'
         ))
 

@@ -31,7 +31,7 @@ import drought_t.data_manager as dmgr
 import drought_t.plot_time_series as plots
 import drought_t.threshold_level_method as tlm
 
-config = dmgr.Configurations('drought_t.toml')
+config = dmgr.Configurations('test.toml')
 
 if config.vars['precip']['input_dir'] is not False:
     # Retrieve the precipitation (precip) data.
