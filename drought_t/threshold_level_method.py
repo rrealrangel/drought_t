@@ -18,11 +18,12 @@ LICENSE
 import numpy as np
 import pandas as pd
 
-import data_manager as dmgr
+from drought_t import data_manager as dmgr
 
 
-def reference_value(
-        x, q=0.5, window=29, zero=0.25, min_notnull=0.667, min_nonzero=0.1
+def threshold_level(
+        x, q=0.5, window=29, min_wet=1.0, min_notnull=0.667,
+        min_wet_proportion=0.1, min_len=15
         ):
     """
     Compute the base value (x0) that will cut the sequence x into runs.
@@ -38,7 +39,7 @@ def reference_value(
         * drought magnitude: sum of negative deviations, between the
             successive downcross and upcross.
 
-    Here, x0 is defined as a percentile (q) of nonzero daily
+    Here, x0 is defined as a percentile (q) of wet daily
     observations, computed following the procedure of Durre et al.
     (2011).
 
@@ -62,16 +63,15 @@ def reference_value(
         Size of the window centered on each day of the year used to
         choose the values from which the percentile will be computed.
         By default, 29.
-    zero : float, optional
-        Minimum value to be considered as a nonzero value. If set to a
-        negative value (for example, -1), zero values are included in
-        the computation of the percentile. By default, 0.25.
+    min_wet : float, optional
+        Minimum wet value. Every value below it is considered to be
+        zero. By default, 1.0.
     min_notnull : int, optional
         Minumum fraction of values available within the applicable window
         in a given year to be included in the analysis. It cannot be
         greater than window. By default, 0.667.
-    min_nonzero : float, optional
-        Minimum ratio of nonzero values of the chosen values to perform
+    min_wet : float, optional
+        Minimum ratio of wet values of the chosen values to perform
         the computation of the percentile.
 
     Returns
@@ -120,15 +120,15 @@ def reference_value(
             ).filter(lambda group: group.count() > (min_notnull * window))
 
         # Remove zero-values.
-        data_subset_nonzero = data_subset[data_subset > zero]
+        data_subset_wet = data_subset[data_subset >= min_wet]
 
-        # Compute the x0 only if, at least, min_nonzero of the chosen
+        # Compute the x0 only if, at least, min_wet_proportion of the chosen
         # values are nonzero.
-        if len(data_subset_nonzero) / float(len(data_subset)) > min_nonzero:
+        if len(data_subset_wet) / float(len(data_subset)) > min_wet_proportion:
             x0[
                 (x0.index.month == date.month) &
                 (x0.index.day == date.day)
-                ] = data_subset_nonzero.quantile(q=q)
+                ] = data_subset_wet.quantile(q=q)
 
     # Set February 29 values as the mean of their corresponding
     # February 28 and March 1.
@@ -143,14 +143,23 @@ def reference_value(
         min_periods=(window / 2)
         ).mean()
 
+    # Remove stretches of percentiles shorter than min_len.
+    def remove_minor(group):
+        if 1 < len(group) < min_len:
+            return(group * np.nan)
+
+        else:
+            return(group)
+
+    x0 = x0.groupby(by=x0.isna().cumsum()).transform(remove_minor)
     return(x0)
 
 
-def smooth_variable(x, window=29, zero=0.25):
+def smooth_variable(x, window=29, min_periods_r=0.5):
     """
     Computes a moving average to the raw records of a variable (e. g.,
     precipitation, streamflow, etc.) to make comparable to the
-    reference level computed with reference_value().
+    reference level computed with threshold_level().
 
     References:
     Durre, I., Squires, M. F., Vose, R. S., Applequist, S., & Yin,
@@ -165,10 +174,6 @@ def smooth_variable(x, window=29, zero=0.25):
         Size of the window centered on each day of the year used to
         choose the values from which the mean will be computed. By
         default, 29.
-    zero : float, optional
-        Minimum value to be considered as a nonzero value. If set to a
-        negative value (for example, -1), zero values are included in
-        the computation of the mean. By default, 0.25.
 
     Returns
     -------
@@ -176,37 +181,12 @@ def smooth_variable(x, window=29, zero=0.25):
         The time series of the variable of interest (x) with the same
         length as the input x.
     """
-    x_nonzero = x.copy()
-    x_nonzero[x_nonzero <= zero] = np.nan
-    x_smooth = x_nonzero.rolling(
+    x_smooth = x.rolling(
         window=window,
         center=True,
-        min_periods=int(window / 2)
+        min_periods=int(np.ceil(window * min_periods_r))
         ).mean()
     return(x_smooth)
-
-
-def _sign_wo_zero(value):
-    """
-    Sign of a value. This function applies numpy.sign(), with the
-    difference that 0 is interpedted as negative values (-1).
-
-    Parameters
-    ----------
-    value : float
-        Input value to which define the sign.
-
-    Output
-    ------
-    integer
-        The sign of the input value. -1, if value is negative or zero;
-        and 1, is value is positive.
-    """
-    if np.sign(value) == 0:
-        return(1)
-
-    else:
-        return(np.sign(value))
 
 
 def _sign_grouper(anomalies):
@@ -247,7 +227,7 @@ def get_runs(anomalies):
         })
 
 
-def pool_runs(x, x0, pooling_method='None', **kwargs):
+def pool_runs(runs, pooling_method='None', **kwargs):
     """
     Parameters
     ----------
@@ -261,19 +241,37 @@ def pool_runs(x, x0, pooling_method='None', **kwargs):
         method ('ma'), and the inter-event time and volume criterion
         method ('ic').
     kwargs : keyword arguments
-        window: the size of the moving average window (in days).
-        Only used if pooling_method == 'ma'.
+        runs_ma: the runs derived from a smoothed time series of the
+            variable of interest. Only used if pooling_method == 'ma'.
         tc: the inter-event critic duration (in days). Only used if
-        pooling_method == 'ic'.
+            pooling_method == 'ic'.
         pc: the critical ratio. Only used if pooling_method == 'ic'.
 
     Output
     ------
         numpy.array
     """
-    anomalies = (x - x0)
-    anomalies.name = 'anomaly'
-    runs = get_runs(anomalies=anomalies)
+    def _sign_wo_zero(value):
+        """
+        Sign of a value. This function applies numpy.sign(), with the
+        difference that 0 is interpedted as negative values (-1).
+
+        Parameters
+        ----------
+        value : float
+            Input value to which define the sign.
+
+        Output
+        ------
+        integer
+            The sign of the input value. -1, if value is negative or zero;
+            and 1, is value is positive.
+        """
+        if np.sign(value) == 0:
+            return(1)
+
+        else:
+            return(np.sign(value))
 
 # =============================================================================
 # Do not pool events.
@@ -286,16 +284,7 @@ def pool_runs(x, x0, pooling_method='None', **kwargs):
 # Pooling runs through the moving average (MA) method.
 # =============================================================================
     elif pooling_method == 'ma':
-        window = kwargs['window']
-        x_ma = x.rolling(
-            window=window,
-            center=True,
-            min_periods=window
-            ).mean()
-        anomalies_ma = x_ma - x0
-
-        # Compute runs for the transformed input data.
-        runs_ma = get_runs(anomalies=anomalies_ma)
+        runs_ma = kwargs['runs_ma']
         runs_pooled = {}
         counter = 1
         counter2 = 0
@@ -395,12 +384,6 @@ def pool_runs(x, x0, pooling_method='None', **kwargs):
         runs_pooled = runs_pooled_tagged
 
 # =============================================================================
-# Pooling runs through the sequent peak algorithm (SPA) method.
-# =============================================================================
-    elif pooling_method == 'sp':
-        pass
-
-# =============================================================================
 # Pooling runs through the inter-event time and volume criterion (IC) method.
 # =============================================================================
     elif pooling_method == 'ic':
@@ -410,17 +393,17 @@ def pool_runs(x, x0, pooling_method='None', **kwargs):
         runs_key = 0
 
         while runs_key < len(runs):
-            run_pooled = runs[runs.keys()[runs_key]]
+            run_pooled = runs[sorted(runs.keys())[runs_key]]
 
             if np.sign(run_pooled.sum()) == -1:
                 if runs_key < len(runs) - 2:
-                    run_inter = runs[runs.keys()[runs_key + 1]]
+                    run_inter = runs[sorted(runs.keys())[runs_key + 1]]
 
                     # Test the pooling conditioning factors and pool the runs.
                     while ((run_inter.count() <= tc) &
                            (abs(run_inter.sum() / run_pooled.sum()) <= pc) &
                            (runs_key < len(runs) - 2)):
-                        run_to_pool = runs[runs.keys()[runs_key + 2]]
+                        run_to_pool = runs[sorted(runs.keys())[runs_key + 2]]
 
                         if (((run_inter.index[0] -
                              run_pooled.index[-1]).days == 1) &
@@ -430,7 +413,11 @@ def pool_runs(x, x0, pooling_method='None', **kwargs):
                                 [run_pooled, run_inter, run_to_pool]
                                 )
                             runs_key += 2
-                            run_inter = runs[runs.keys()[runs_key + 1]]
+
+                            if runs_key < len(runs) - 2:
+                                run_inter = (
+                                    runs[sorted(runs.keys())[runs_key + 1]]
+                                    )
 
                         else:
                             break
@@ -452,6 +439,17 @@ def pool_runs(x, x0, pooling_method='None', **kwargs):
                 runs_key += 1
 
     return({num: run for num, run in runs_pooled.items()})
+
+
+def remove_minors(runs, len_c, sum_c):
+    """ Remove minor droughts.
+    """
+    len_min = runs_length(runs=runs).mean() * len_c
+    sum_min = abs(runs_sum(runs=runs).mean()) * sum_c
+    return({
+        k: v for k, v in runs.items()
+        if (len(v) >= len_min) and (abs(v.sum()) >= sum_min)
+        })
 
 
 def runs_onset(runs):

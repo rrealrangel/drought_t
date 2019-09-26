@@ -8,19 +8,27 @@ import numpy as np
 from drought_t import threshold_level_method as tlm
 
 
-def pooling_par(x, x0, pooling_method, tc_list, pc_list):
+def pooling_par(runs, pooling_method, **kwargs):
     # Moving average (MA) method.
     if pooling_method == 'ma':
         runnum = []
         runlen = []
         runsum = []
-        window_list = range(1, 30)
+        window_list = kwargs['window_list']
+        x = kwargs['x']
+        x0 = kwargs['x0']
 
         for window in window_list:
-            droughts = tlm.pool_runs(
+            x_ma = tlm.smooth_variable(
                 x=x,
-                x0=x0,
+                window=window)
+            anomalies = x_ma - x0
+            anomalies.name = 'anomaly'
+            runs_ma = tlm.get_runs(anomalies=anomalies)
+            droughts = tlm.pool_runs(
+                runs=runs,
                 pooling_method=pooling_method,
+                runs_ma=runs_ma,
                 window=window
                 )
             runnum.append(len(droughts))
@@ -32,7 +40,9 @@ def pooling_par(x, x0, pooling_method, tc_list, pc_list):
                 ).mean())
 
     # Inter-event time and volume criterion (IC) method
-    if pooling_method == 'ic':
+    elif pooling_method == 'ic':
+        tc_list = kwargs['tc_list']
+        pc_list = kwargs['pc_list']
         runnum = np.ndarray(shape=(len(tc_list), len(pc_list))) * np.nan
         runlen = np.ndarray(shape=(len(tc_list), len(pc_list))) * np.nan
         runsum = np.ndarray(shape=(len(tc_list), len(pc_list))) * np.nan
@@ -44,20 +54,11 @@ def pooling_par(x, x0, pooling_method, tc_list, pc_list):
 
                 else:
                     droughts = tlm.pool_runs(
-                        x=x,
-                        x0=x0,
+                        runs=runs,
                         pooling_method=pooling_method,
                         tc=tc,
                         pc=pc
                         )
-
-                    # Remove minor droughts.
-                    len_min = tlm.runs_length(runs=droughts).mean() * 0.1
-                    sum_min = tlm.runs_sum(runs=droughts).mean() * 0.1
-                    droughts = {
-                        k: v for k, v in droughts.items()
-                        if (len(v) >= len_min) and (v.sum() <= sum_min)
-                        }
 
                     # Define the reference values (not pooled).
                     if (i == 0) and (j == 0):
