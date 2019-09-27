@@ -22,7 +22,7 @@ from drought_t import data_manager as dmgr
 
 
 def threshold_level(
-        x, q=0.5, window=29, min_wet=1.0, min_notnull=0.667,
+        x, q=0.5, window=29, max_zero=0.0, min_notnull=0.667,
         min_wet_proportion=0.1, min_len=15
         ):
     """
@@ -63,14 +63,14 @@ def threshold_level(
         Size of the window centered on each day of the year used to
         choose the values from which the percentile will be computed.
         By default, 29.
-    min_wet : float, optional
-        Minimum wet value. Every value below it is considered to be
-        zero. By default, 1.0.
+    max_zero : float, optional
+        Maximum dry value. Every value below or equal is considered to
+        be zero. By default, 0.0.
     min_notnull : int, optional
         Minumum fraction of values available within the applicable window
         in a given year to be included in the analysis. It cannot be
         greater than window. By default, 0.667.
-    min_wet : float, optional
+    min_wet_proportion : float, optional
         Minimum ratio of wet values of the chosen values to perform
         the computation of the percentile.
 
@@ -120,7 +120,7 @@ def threshold_level(
             ).filter(lambda group: group.count() > (min_notnull * window))
 
         # Remove zero-values.
-        data_subset_wet = data_subset[data_subset >= min_wet]
+        data_subset_wet = data_subset[data_subset > max_zero]
 
         # Compute the x0 only if, at least, min_wet_proportion of the chosen
         # values are nonzero.
