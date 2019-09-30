@@ -19,6 +19,67 @@ import numpy as np
 import pandas as pd
 
 from drought_t import data_manager as dmgr
+from drought_t import quadratic_lowess as ql
+
+
+def smooth_variable(x, method='lowess', **kwargs):
+    """
+    Computes a moving average to the raw records of a variable (e. g.,
+    precipitation, streamflow, etc.) to make comparable to the
+    reference level computed with threshold_level().
+
+    References:
+    Durre, I., Squires, M. F., Vose, R. S., Applequist, S., & Yin,
+        X. (2011). Computational Procedures for the 1981-2010
+        Normals: Precipitation, Snowfall, and Snow Depth.
+
+    Parameters
+    ----------
+    x : pandas.Series
+        The time series of the input data.
+    window : int, optional
+        Size of the window centered on each day of the year used to
+        choose the values from which the mean will be computed. By
+        default, 29.
+
+    Returns
+    -------
+    pandas.Series
+        The time series of the variable of interest (x) with the same
+        length as the input x.
+    """
+    if method == 'ma':
+        window = kwargs['window']
+        min_periods_r = kwargs['min_periods_r']
+        x_smooth = x.rolling(
+            window=window,
+            center=True,
+            min_periods=int(np.ceil(window * min_periods_r))
+            ).mean()
+
+    elif method == 'lowess':
+        x_smooth = x.copy()
+        oneyear = x[x.index.year == x.index.year[1]]
+        ydata = oneyear[np.isfinite(oneyear)]
+        xdata = np.arange(1, len(ydata) + 1).astype(dtype=float)
+        f = ql.optimal_f(
+            x=xdata,
+            y=ydata.values
+            )
+        ydata_lowess = ydata.copy()
+        ydata_lowess[:] = ql.quadratic_lowess(
+            x=xdata,
+            y=ydata,
+            f=f
+            )
+
+        for date in ydata_lowess.index:
+            x_smooth[
+                (x_smooth.index.month == date.month) &
+                (x_smooth.index.day == date.day)
+                ] = ydata_lowess[date]
+
+    return(x_smooth)
 
 
 def threshold_level(
@@ -137,11 +198,7 @@ def threshold_level(
         ])
 
     # Smooth the resulting x0.
-    x0 = x0.rolling(
-        window=window,
-        center=True,
-        min_periods=(window / 2)
-        ).mean()
+    x0 = smooth_variable(x0, method='lowess')
 
     # Remove stretches of percentiles shorter than min_len.
     def remove_minor(group):
@@ -153,40 +210,6 @@ def threshold_level(
 
     x0 = x0.groupby(by=x0.isna().cumsum()).transform(remove_minor)
     return(x0)
-
-
-def smooth_variable(x, window=29, min_periods_r=0.5):
-    """
-    Computes a moving average to the raw records of a variable (e. g.,
-    precipitation, streamflow, etc.) to make comparable to the
-    reference level computed with threshold_level().
-
-    References:
-    Durre, I., Squires, M. F., Vose, R. S., Applequist, S., & Yin,
-        X. (2011). Computational Procedures for the 1981-2010
-        Normals: Precipitation, Snowfall, and Snow Depth.
-
-    Parameters
-    ----------
-    x : pandas.Series
-        The time series of the input data.
-    window : int, optional
-        Size of the window centered on each day of the year used to
-        choose the values from which the mean will be computed. By
-        default, 29.
-
-    Returns
-    -------
-    pandas.Series
-        The time series of the variable of interest (x) with the same
-        length as the input x.
-    """
-    x_smooth = x.rolling(
-        window=window,
-        center=True,
-        min_periods=int(np.ceil(window * min_periods_r))
-        ).mean()
-    return(x_smooth)
 
 
 def _sign_grouper(anomalies):

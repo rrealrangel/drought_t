@@ -1,5 +1,6 @@
 import data_analyst
 import data_manager
 import plot_time_series
+import quadratic_lowess
 import sensitivity_analysis
 import threshold_level_method
