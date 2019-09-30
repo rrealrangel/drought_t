@@ -11,15 +11,14 @@ LICENSE
     GNU General Public License
 """
 import math
-import sys as _sys
+import sys
 
-from numpy import nan as _nan
-from pathlib2 import Path as _Path
-import gdal as _gdal
-import ogr as _ogr
-import pandas as _pd
-import toml as _toml
-import xarray as _xr
+from pathlib2 import Path
+import gdal
+import ogr
+import pandas as pd
+import toml
+import xarray as xr
 
 
 class Configurations():
@@ -27,7 +26,7 @@ class Configurations():
     """
     def __init__(self, config_file):
         self.config_file = config_file
-        config = _toml.load(config_file)
+        config = toml.load(config_file)
 
         for key, value in config.items():
             setattr(self, key, value)
@@ -42,7 +41,7 @@ def list_files(input_dir, input_patt):
         input_patt: string or list of strings
             Extension(s) of the files to be listed.
     """
-    input_dir = _Path(input_dir)
+    input_dir = Path(input_dir)
     files_list = []
 
     if isinstance(input_patt, str):
@@ -58,7 +57,7 @@ def list_files(input_dir, input_patt):
 
 
 def vmap_area(input_path):
-    source_ds = _ogr.Open(input_path)
+    source_ds = ogr.Open(input_path)
     source_layer = source_ds.GetLayer(0)
     feature = source_layer[0]
     geom = feature.GetGeometryRef()
@@ -109,7 +108,7 @@ def vector2array(input_path, resolution, nodata):
         https://bit.ly/2HxeOng
     """
     # Open the data source and read in the extent
-    source_ds = _ogr.Open(input_path)
+    source_ds = ogr.Open(input_path)
     source_layer = source_ds.GetLayer(0)
     xmin, xmax, ymin, ymax = source_layer.GetExtent()
 
@@ -128,15 +127,15 @@ def vector2array(input_path, resolution, nodata):
     # Create the destination data source
     cols = int((xmax - xmin) / resolution)
     rows = int((ymax - ymin) / resolution)
-    output_source = _gdal.GetDriverByName('MEM').Create(
-        '', cols, rows, _gdal.GDT_Byte
+    output_source = gdal.GetDriverByName('MEM').Create(
+        '', cols, rows, gdal.GDT_Byte
         )
     output_source.SetGeoTransform((xmin, resolution, 0, ymax, 0, -resolution))
     output_band = output_source.GetRasterBand(1)
     output_band.SetNoDataValue(nodata)
 
     # Rasterize
-    _gdal.RasterizeLayer(output_source, [1], source_layer, burn_values=[1])
+    gdal.RasterizeLayer(output_source, [1], source_layer, burn_values=[1])
 
     # Read as array
     return(output_band.ReadAsArray().astype(int))
@@ -181,7 +180,11 @@ def open_precip(
     """
     if source == 'bdcn':
         # TODO: clip data to the basin.
-        data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc4'))
+        data = xr.open_mfdataset(
+            paths=(input_data_dir + '/*.nc4'),
+            concat_dim='time',
+            combine='nested'
+            )
         data = data.rename(name_dict={'prec': output_var_name})
         mask = vector2array(
             input_path=kwargs['input_mask_path'],
@@ -202,10 +205,10 @@ def open_precip(
             data_aggregated = data[output_var_name].mean(['east', 'north'])
 
         cells_per_date = data[output_var_name].notnull().sum(['east', 'north'])
-        time_series = _xr.where(
-            cells_per_date < min_cells, _nan, data_aggregated
+        time_series = xr.where(
+            cells_per_date < min_cells, pd.np.nan, data_aggregated
             ).to_series()
-        new_indices = _pd.date_range(
+        new_indices = pd.date_range(
             start=sorted(time_series.index)[0],
             end=sorted(time_series.index)[-1],
             freq='1D'
@@ -213,10 +216,14 @@ def open_precip(
         precip = time_series.reindex(new_indices)
 
     elif source == 'chirps':
-        data = _xr.open_mfdataset(paths=(input_data_dir + '/*.nc'))
+        data = xr.open_mfdataset(
+            paths=(input_data_dir + '/*.nc'),
+            concat_dim='time',
+            combine='nested'
+            )
         data = data.rename(name_dict={'precip': output_var_name})
         data_accum_per_cell = data.copy().observed
-        data_accum_per_cell.values = data_accum_per_cell.values * _pd.np.nan
+        data_accum_per_cell.values = data_accum_per_cell.values * pd.np.nan
 
         basin_area = 0
         for lat in data_accum_per_cell.latitude:
@@ -236,7 +243,7 @@ def open_precip(
         precip = (data_accum_per_cell.sum(
             ['latitude', 'longitude']
             ) / basin_area).to_dataframe()['observed']
-        # precip.index.freq = _pd.infer_freq(precip.index)
+        # precip.index.freq = pd.infer_freq(precip.index)
 
     precip.index = precip.index.tz_localize(time_zone)
     precip.index = precip.index.tz_convert('UTC')
@@ -246,12 +253,12 @@ def open_precip(
 
 def open_sflow_ts(input_file, input_mask_path, time_zone):
     # Open data source.
-    data = _xr.open_dataset(input_file)
+    data = xr.open_dataset(input_file)
     data = data['disc_filled'].rename('observed').to_series()
 
     # Add 8 hours to the timestamps (actual measuring time) and
     # convert them from local to UTC
-    data.index = data.index + _pd.Timedelta(8, 'h')
+    data.index = data.index + pd.Timedelta(8, 'h')
     data.index = data.index.tz_localize(time_zone)
     data.index = data.index.tz_convert('UTC')
     data.index = data.index.tz_localize(None)
@@ -259,7 +266,7 @@ def open_sflow_ts(input_file, input_mask_path, time_zone):
     # Convert data units from m3 s-1 to mm day-1 m-2.
     basin_area = vmap_area(input_path=input_mask_path)
     data = ((data * (24 * 60 * 60) * 1000) / basin_area)
-    new_indices = _pd.date_range(
+    new_indices = pd.date_range(
         start=data.index[0],
         end=data.index[-1],
         freq='1D'
@@ -286,16 +293,16 @@ def progress_message(current, total, message="- Processing", units=None):
     """
     if units is not None:
         progress = float(current)/total
-        _sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
+        sys.stdout.write("\r    {} ({:.1f} % of {} processed)".format(
                 message, progress * 100, units))
 
     else:
         progress = float(current)/total
-        _sys.stdout.write("\r    {} ({:.1f} % processed)".format(
+        sys.stdout.write("\r    {} ({:.1f} % processed)".format(
                 message, progress * 100))
 
     if progress < 1:
-        _sys.stdout.flush()
+        sys.stdout.flush()
 
     else:
-        _sys.stdout.write('\n')
+        sys.stdout.write('\n')
