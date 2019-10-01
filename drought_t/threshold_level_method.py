@@ -202,7 +202,7 @@ def threshold_level(
 
     # Remove stretches of percentiles shorter than min_len.
     def remove_minor(group):
-        if 1 < len(group) < min_len:
+        if 1 < len(group) < min_len:  # Shouldnt it be "len(group) < min_len"?
             return(group * np.nan)
 
         else:
