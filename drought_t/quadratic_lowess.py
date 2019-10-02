@@ -23,7 +23,7 @@ from scipy import linalg as _linalg
 # =============================================================================
 
 
-def optimal_f(x, y, f_to_try=41, it=2, xval_folds=3):
+def optimal_f(x, y, ftries=41, it=2, xval_folds=3):
     """
     """
     kf = _KFold(
@@ -34,7 +34,7 @@ def optimal_f(x, y, f_to_try=41, it=2, xval_folds=3):
     f_tries = _np.linspace(
         start=0,
         stop=1,
-        num=f_to_try
+        num=ftries
         )
     f_tries = f_tries[f_tries != 0]
     crossval = {}
