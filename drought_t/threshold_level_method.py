@@ -58,7 +58,7 @@ def get_runs(anomalies):
         })
 
 
-def pool_runs(runs, pooling_method='None', **kwargs):
+def pool_runs(runs, **parameters):
     """
     Parameters
     ----------
@@ -71,7 +71,7 @@ def pool_runs(runs, pooling_method='None', **kwargs):
         'none' (default). The other options are: the moving average
         method ('ma'), and the inter-event time and volume criterion
         method ('ic').
-    kwargs : keyword arguments
+    parameters : keyword arguments
         runs_ma: the runs derived from a smoothed time series of the
             variable of interest. Only used if pooling_method == 'ma'.
         tc: the inter-event critic duration (in days). Only used if
@@ -107,15 +107,15 @@ def pool_runs(runs, pooling_method='None', **kwargs):
 # =============================================================================
 # Do not pool events.
 # =============================================================================
-    if pooling_method == 'None':
+    if parameters['method'] == 'None':
         # Not pooling runs.
         runs_pooled = runs
 
 # =============================================================================
 # Pooling runs through the moving average (MA) method.
 # =============================================================================
-    elif pooling_method == 'ma':
-        runs_ma = kwargs['runs_ma']
+    elif parameters['method'] == 'ma':
+        runs_ma = parameters['runs_ma']
         runs_pooled = {}
         counter = 1
         counter2 = 0
@@ -217,9 +217,9 @@ def pool_runs(runs, pooling_method='None', **kwargs):
 # =============================================================================
 # Pooling runs through the inter-event time and volume criterion (IC) method.
 # =============================================================================
-    elif pooling_method == 'ic':
-        tc = kwargs['tc']
-        pc = kwargs['pc']
+    elif parameters['method'] == 'ic':
+        tc = parameters['tc']
+        pc = parameters['pc']
         runs_pooled = {}
         runs_key = 0
 

@@ -6,26 +6,101 @@ Created on Mon Sep 30 12:59:58 2019
 """
 import numpy as np
 import pandas as pd
-from drought_t import quadratic_lowess as ql
+import statsmodels.api as sm
+from drought_t import data_manager as dmgr
+from sklearn.model_selection import KFold
+#from sklearn.model_selection import train_test_split
 
 
-def smoothvar(x, method='lowess', **kwargs):
+def lowess(data, poly=2):
+    def optimal_f(exog, endog, it=2, xval_folds=3):
+        """
+        """
+#        exog_trn, exog_tst, endog_trn, endog_tst = train_test_split(
+#            exog, endog, test_size=0.9, random_state=1
+#            )
+        kf = KFold(
+            n_splits=xval_folds,
+            shuffle=True,
+            random_state=1
+            )
+        crossval = {}
+        oneday = 1 / (len(exog) * ((xval_folds - 1) / xval_folds))
+        f_tries = np.arange(
+            start=oneday,
+            stop=(oneday * 31),
+            step=(oneday * 1)
+            )
+
+        for i, f in enumerate(f_tries):
+            mae = []
+
+            for trn_fold, tst_fold in kf.split(endog):
+                # Split the sample in training and testing subsets.
+                exog_tst = exog[tst_fold].copy()
+                endog_tst = endog[tst_fold].copy()
+                exog_trn = exog[trn_fold].copy()
+                endog_trn = endog[trn_fold].copy()
+
+                # Apply the model.
+                data_model = sm.nonparametric.lowess(
+                    endog=endog_trn,
+                    exog=exog_trn,
+                    frac=f,
+                    it=2,
+                    missing='raise'
+                    )
+                endog_trn_model = data_model[:, 1].copy()
+
+                # Test the results.
+                endog_tst_model = np.interp(
+                    x=exog_tst,
+                    xp=exog_trn,
+                    fp=endog_trn_model,
+                    left=np.nan,
+                    right=np.nan
+                    )
+                endog_tst = endog_tst[np.isfinite(endog_tst_model)]
+                endog_tst_model = endog_tst_model[np.isfinite(endog_tst_model)]
+                mae.append(np.mean(np.abs(endog_tst - endog_tst_model)))
+
+            dmgr.progress_message(
+                current=(i + 1),
+                total=len(f_tries),
+                message="- Looking for the optimal f value",
+                units=None
+                )
+
+            crossval[f] = np.mean(mae)
+
+        return(min(crossval.keys(), key=(lambda k: crossval[k])))
+
+    data_x = np.array(list(range(len(data))))
+    data_y = data.values
+    data_x = data_x[np.isfinite(data_y)]
+    data_y = data_y[np.isfinite(data_y)]
+    data_x = data_x ** poly
+    f = optimal_f(
+        exog=data_x,
+        endog=data_y,
+        it=2,
+        xval_folds=3
+        )
+    data_model = sm.nonparametric.lowess(
+        endog=data_y,
+        exog=data_x,
+        frac=f,
+        it=2,
+        missing='raise'
+        )
+    data_lowess = data.copy()
+    data_lowess[data_lowess.notna()] = data_model[:, 1]
+    return(data_lowess)
+
+
+def maverage(x, window, min_periods_r):
     """
     Smoothes the raw records of a variable.
-
-    References:
-    Cleveland, W. S. (1979). Robust Locally Weighted Regression and
-        Smoothing Scatterplots. Journal of the American Statistical
-        Association, 9.
-    Cleveland, W. S., & Devlin, S. J. (1988). Locally Weighted
-        Regression: An Approach to Regression Analysis by Local
-        Fitting. Journal of the American Statistical Association,
-        83(403), 596–610. Retrieved from http://links.jstor.org
-        /sici?sici=0162-1459%28198809%2983%3A403%3C596%3ALWRAAT%3E2.0.
-        CO%3B2-Y
-    Durre, I., Squires, M. F., Vose, R. S., Applequist, S., & Yin,
-        X. (2011). Computational Procedures for the 1981-2010
-        Normals: Precipitation, Snowfall, and Snow Depth.
 
     Parameters
     ----------
@@ -42,46 +117,28 @@ def smoothvar(x, method='lowess', **kwargs):
         The time series of the variable of interest (x) with the same
         length as the input x.
     """
-    if method == 'ma':
-        window = kwargs['window']
-        min_periods_r = kwargs['min_periods_r']
-        x_smooth = x.rolling(
-            window=window,
-            center=True,
-            min_periods=int(np.ceil(window * min_periods_r))
-            ).mean()
+    return(x.rolling(
+        window=window,
+        center=True,
+        min_periods=int(np.ceil(window * min_periods_r))
+        ).mean())
 
-    elif method == 'lowess':
-        ftries = kwargs['ftries']
-        x_smooth = x.copy()
-        oneyear = x[x.index.year == x.index.year[1]]
-        ydata = oneyear[np.isfinite(oneyear)]
-        xdata = np.arange(1, len(ydata) + 1).astype(dtype=float)
-        f = ql.optimal_f(
-            x=xdata,
-            y=ydata.values,
-            ftries=ftries
-            )
-        ydata_lowess = ydata.copy()
-        ydata_lowess[:] = ql.quadratic_lowess(
-            x=xdata,
-            y=ydata,
-            f=f
-            )
 
-        for date in ydata_lowess.index:
-            x_smooth[
-                (x_smooth.index.month == date.month) &
-                (x_smooth.index.day == date.day)
-                ] = ydata_lowess[date]
-
-    return(x_smooth)
+def smoothvar(x, **parameters):
+    if parameters['method'] == 'ma':
+        return(maverage(
+            x=x,
+            window=parameters['window'],
+            min_periods_r=parameters['min_periods_r']))
+    elif parameters['method'] == 'lowess':
+        return(lowess(
+            data=x,
+            poly=parameters['poly']))
 
 
 def normedian(
         x, q=0.5, window=29, max_zero=0.0, min_notnull=0.667,
-        min_wet_proportion=0.1, min_len=15, smoothing_method='lowess',
-        **kwargs
+        min_wet_proportion=0.1, min_len=15, smooth=False, smoothpar=None
         ):
     """
     Compute 50th percentile of long-term daily records of a variable.
@@ -175,24 +232,35 @@ def normedian(
         x0['1981-02-28'], x0['1981-03-01']
         ])
 
-    # Smooth the resulting x0.
-    if smoothing_method == 'lowess':
-        ftries = kwargs['ftries']
-        x0 = smoothvar(
-            x=x0,
-            method=smoothing_method,
-            ftries=ftries
-            )
+    x0.interpolate(
+        method='linear',
+        limit=3,
+        inplace=True,
+        limit_direction='both',
+        limit_area='inside'
+        )
 
-    elif smoothing_method == 'ma':
-        smoothing_window = kwargs['smoothing_window']
-        smoothing_min_periods_r = kwargs['smoothing_min_periods_r']
+    # Smooth the resulting x0.
+    if smooth:
         x0 = smoothvar(
             x=x0,
-            method=smoothing_method,
-            window=smoothing_window,
-            min_periods_r=smoothing_min_periods_r
+            **smoothpar
             )
+#    if smoothing_method == 'lowess':
+#        poly = smoothpar['poly']
+#        x0 = lowess(
+#            data=x0,
+#            poly=poly
+#            )
+#
+#    elif smoothing_method == 'ma':
+#        smoothing_window = smoothpar['smoothing_window']
+#        smoothing_min_periods_r = smoothpar['smoothing_min_periods_r']
+#        x0 = maverage(
+#            x=x0,
+#            window=smoothing_window,
+#            min_periods_r=smoothing_min_periods_r
+#            )
 
     # Remove stretches shorter than min_len.
     def remove_shorts(group):
