@@ -109,7 +109,7 @@ def pool_runs(runs, **parameters):
 # =============================================================================
     if parameters['method'] == 'None':
         # Not pooling runs.
-        runs_pooled = runs
+        runs_pooled = {k: v for k, v in runs.items() if v.sum() < 0}
 
 # =============================================================================
 # Pooling runs through the moving average (MA) method.
