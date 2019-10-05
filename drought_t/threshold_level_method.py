@@ -52,6 +52,8 @@ def get_runs(anomalies):
     dict
         Runs identified in the input series of anomalies.
     """
+    # TODO: Add the date label to the index in the=is function, instead
+    # of in pool_runs().
     return({
         name: _sign_grouper(anomalies=anomalies).get_group(name=name)
         for name in _sign_grouper(anomalies=anomalies).indices
@@ -109,7 +111,23 @@ def pool_runs(runs, **parameters):
 # =============================================================================
     if parameters['method'] == 'None':
         # Not pooling runs.
-        runs_pooled = {k: v for k, v in runs.items() if v.sum() < 0}
+        runs_pooled = {}
+
+        for k, run in runs.items():
+            if run.sum() < 0:
+                peak_day = run.index[run == run.min()]
+
+                if len(peak_day) > 1:
+                    peak_day = peak_day[
+                        int(np.ceil((len(peak_day) / 2.) - 1))
+                        ]
+                
+                else:
+                    peak_day = peak_day[0]
+
+                runs_pooled[peak_day] = run
+
+        return(runs_pooled)
 
 # =============================================================================
 # Pooling runs through the moving average (MA) method.

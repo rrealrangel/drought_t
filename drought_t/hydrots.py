@@ -8,8 +8,9 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from drought_t import data_manager as dmgr
+from scipy import stats
 from sklearn.model_selection import KFold
-#from sklearn.model_selection import train_test_split
+# from sklearn.model_selection import train_test_split
 
 
 def lowess(data, poly=2):
@@ -335,3 +336,36 @@ def lynehollick(x, a=0.925, reflection=30, passes=3):
                 qb[it[i]] = qin[it[i]] - qf[it[i]]
 
         return(qb.reindex(index=x.index))
+
+
+def rank2v(x, y):
+    """
+    Reference:
+        Yue, S., Ouarda, T. B. M. J., Bobée, B., Legendre, P. &
+            Bruneau, P. (1999). The Gumbel mixed model for flood
+            frequency analysis. Journal of Hydrology, 226(1–2), 88–100
+            https://doi.org/10.1016/S0022-1694(99)00168-7.
+    """
+    xy = np.array([x.values, y.values]).T
+    rank = np.array([
+        len(np.where(np.all(xy[:] <= xy[i], axis=1))[0])
+        for i in range(len(xy))
+        ])
+    return(pd.Series(
+        data=rank,
+        index=x.index,
+        name='rank'
+        ))
+
+
+
+def plotpos(rank, a=0.44):
+    """
+    Reference:
+        Gringorten, I. I. (1963). A plotting rule for extreme
+            probability paper. Journal of Geophysical Research, 68(3),
+            813–813. https://doi.org/10.1029/JZ068i003p00813
+    """
+    empP = (rank - a) / (len(rank) + (1 - (2 * a)))
+    empP.name = 'P'
+    return(empP)
